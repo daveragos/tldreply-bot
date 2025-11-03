@@ -7,6 +7,8 @@ export class Database {
     this.pool = new Pool({
       connectionString,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      // Set connection timeout to help debug connection issues
+      connectionTimeoutMillis: 10000,
     });
 
     // Handle connection errors
