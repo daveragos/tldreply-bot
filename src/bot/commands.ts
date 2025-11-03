@@ -219,12 +219,10 @@ export class Commands {
   }
 
   private async handleTLDR(ctx: MyContext) {
-    console.log('handleTLDR called');
     const chat = ctx.chat;
-    console.log('Chat:', chat?.type, chat?.id);
+    let loadingMsg: any = null;
     
     if (!chat || chat.type === 'private') {
-      console.log('Not a group chat, ignoring');
       await ctx.reply('❌ This command can only be used in a group.');
       return;
     }
@@ -232,10 +230,8 @@ export class Commands {
     try {
       // Check if group is configured
       const group = await this.db.getGroup(chat.id);
-      console.log('Group from DB:', group?.id, group?.enabled);
       
       if (!group || !group.gemini_api_key_encrypted) {
-        console.log('Group not configured');
         await ctx.reply(
           '❌ This group is not configured yet.\n\n' +
           'Ask an admin to set it up in private chat using /setup_group.'
@@ -260,11 +256,11 @@ export class Commands {
       const timeframe = args[1] || '1h';
       const since = this.parseTimeframe(timeframe);
 
-      await ctx.reply('⏳ Generating summary...');
+      loadingMsg = await ctx.reply('⏳ Generating summary...');
 
       const messages = await this.db.getMessagesSinceTimestamp(chat.id, since);
       if (messages.length === 0) {
-        await ctx.editMessageText('📭 No messages found in the specified time range.');
+        await ctx.api.editMessageText(chat.id, loadingMsg.message_id, '📭 No messages found in the specified time range.');
         return;
       }
 
@@ -272,40 +268,68 @@ export class Commands {
       const gemini = new GeminiService(decryptedKey);
       const summary = await gemini.summarizeMessages(messages);
 
-      await ctx.editMessageText(
+      await ctx.api.editMessageText(
+        chat.id,
+        loadingMsg.message_id,
         `📝 <b>TLDR Summary</b> (${timeframe})\n\n${summary}`,
         { parse_mode: 'HTML' }
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating TLDR:', error);
-      await ctx.reply('❌ Error generating summary. Please try again later.');
+      console.error('Error details:', error.message, error.status);
+      
+      // Try to edit the loading message to show error
+      try {
+        if (loadingMsg) {
+          await ctx.api.editMessageText(chat.id, loadingMsg.message_id, '❌ Error generating summary. Please try again later.');
+        } else {
+          await ctx.reply('❌ Error generating summary. Please try again later.');
+        }
+      } catch (editError) {
+        // If edit fails, send new message
+        await ctx.reply('❌ Error generating summary. Please try again later.');
+      }
     }
   }
 
   private async handleTLDRFromMessage(ctx: MyContext, fromMessageId: number) {
+    let loadingMsg: any = null;
+    const chat = ctx.chat!;
+    
     try {
-      const chat = ctx.chat!;
       const group = await this.db.getGroup(chat.id);
       const decryptedKey = this.encryption.decrypt(group.gemini_api_key_encrypted);
 
-      await ctx.reply('⏳ Generating summary...');
+      loadingMsg = await ctx.reply('⏳ Generating summary...');
 
       const messages = await this.db.getMessagesSinceMessageId(chat.id, fromMessageId);
       if (messages.length === 0) {
-        await ctx.editMessageText('📭 No messages found from this point.');
+        await ctx.api.editMessageText(chat.id, loadingMsg.message_id, '📭 No messages found from this point.');
         return;
       }
 
       const gemini = new GeminiService(decryptedKey);
       const summary = await gemini.summarizeMessages(messages);
 
-      await ctx.editMessageText(
+      await ctx.api.editMessageText(
+        chat.id,
+        loadingMsg.message_id,
         `📝 <b>TLDR Summary</b> (from message)\n\n${summary}`,
         { parse_mode: 'HTML' }
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating TLDR from message:', error);
-      await ctx.reply('❌ Error generating summary. Please try again later.');
+      console.error('Error details:', error.message, error.status);
+      
+      try {
+        if (loadingMsg) {
+          await ctx.api.editMessageText(chat.id, loadingMsg.message_id, '❌ Error generating summary. Please try again later.');
+        } else {
+          await ctx.reply('❌ Error generating summary. Please try again later.');
+        }
+      } catch (editError) {
+        await ctx.reply('❌ Error generating summary. Please try again later.');
+      }
     }
   }
 
@@ -349,11 +373,8 @@ export class Commands {
 
     // Don't cache bot commands or empty messages
     if (ctx.message?.text?.startsWith('/')) {
-      console.log('Command received:', ctx.message.text);
       return;
     }
-    
-    console.log('Message received in group', chat.id);
 
     const content = ctx.message?.text || ctx.message?.caption || '';
     if (!content || !ctx.message) {

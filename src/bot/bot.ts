@@ -28,12 +28,6 @@ export class TLDRBot {
     // Register conversation
     this.bot.use(createConversation(setupApiKey));
 
-    // Log all updates for debugging
-    this.bot.use(async (ctx, next) => {
-      console.log('Update received:', ctx.update.update_id, ctx.update.message?.chat?.type || ctx.update.callback_query?.message?.chat?.type);
-      await next();
-    });
-
     new Commands(this.bot, this.db, this.encryption);
 
     // Error handling
