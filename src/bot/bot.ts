@@ -18,12 +18,6 @@ export class TLDRBot {
     
     this.bot = new Bot<MyContext>(telegramToken);
     
-    // Add conversations plugin
-    this.bot.use(conversations());
-    
-    // Register conversation
-    this.bot.use(createConversation(setupApiKey));
-
     // Initialize commands (pass db and encryption to conversation context)
     this.bot.use(async (ctx, next) => {
       // Store db and encryption in context for conversations
@@ -31,6 +25,12 @@ export class TLDRBot {
       (ctx as any).encryption = this.encryption;
       await next();
     });
+    
+    // Add conversations plugin
+    this.bot.use(conversations());
+    
+    // Register conversation
+    this.bot.use(createConversation(setupApiKey));
 
     new Commands(this.bot, this.db, this.encryption);
 
