@@ -163,3 +163,126 @@ export async function updateApiKey(conversation: Conversation<MyContext>, ctx: M
     }
   }
 }
+
+export async function excludeUsers(conversation: Conversation<MyContext>, ctx: MyConversationContext) {
+  const chat = ctx.chat;
+  if (!chat || chat.type === 'private') {
+    await ctx.reply('❌ This feature can only be used in group chats.');
+    return;
+  }
+
+  // Get chat ID from context
+  const groupChatId = chat.id;
+  
+  if (!db) {
+    await ctx.reply('❌ Database service not available.');
+    return;
+  }
+
+  await ctx.reply(
+    '👤 <b>Exclude Users</b>\n\n' +
+    'You can exclude users in three ways:\n\n' +
+    '1️⃣ <b>Reply to a message</b> - Reply to any message from the user you want to exclude\n' +
+    '2️⃣ <b>Enter username</b> - Send username (with or without @)\n' +
+    '   Example: <code>@username</code> or <code>username</code>\n' +
+    '3️⃣ <b>Enter multiple</b> - Send multiple usernames separated by commas\n' +
+    '   Example: <code>@user1, @user2, user3</code>\n\n' +
+    'Send /cancel to go back.',
+    { parse_mode: 'HTML' }
+  );
+
+  const inputCtx = await conversation.wait();
+  
+  // Check if user sent /cancel
+  if (inputCtx.message?.text?.toLowerCase() === '/cancel') {
+    await ctx.reply('❌ Cancelled.');
+    return;
+  }
+
+  // Check if user replied to a message
+  if (inputCtx.message?.reply_to_message) {
+    const repliedUser = inputCtx.message.reply_to_message.from;
+    if (repliedUser && repliedUser.id) {
+      const settings = await db.getGroupSettings(groupChatId);
+      const excludedIds = settings.excluded_user_ids || [];
+      
+      if (excludedIds.includes(repliedUser.id)) {
+        await ctx.reply(`❌ User ${repliedUser.username ? '@' + repliedUser.username : repliedUser.first_name || 'Unknown'} is already excluded.`);
+        return;
+      }
+
+      excludedIds.push(repliedUser.id);
+      await db.updateGroupSettings(groupChatId, {
+        excludedUserIds: excludedIds
+      });
+
+      const username = repliedUser.username ? `@${repliedUser.username}` : (repliedUser.first_name || 'Unknown');
+      await ctx.reply(`✅ User ${username} has been excluded from summaries.`);
+      return;
+    }
+  }
+
+  // Handle text input (username(s))
+  const text = inputCtx.message?.text?.trim();
+  if (!text) {
+    await ctx.reply('❌ Please provide a username or reply to a message.');
+    return;
+  }
+
+  // Parse usernames (with or without @, separated by commas)
+  const usernames = text.split(',').map(u => u.trim().replace(/^@/, ''));
+  
+  if (!db) {
+    await ctx.reply('❌ Database service not available.');
+    return;
+  }
+
+  // Get recent messages to find user IDs by username
+  const recentMessages = await db.query(
+    `SELECT DISTINCT user_id, username, first_name 
+     FROM messages 
+     WHERE telegram_chat_id = $1 
+     AND username IS NOT NULL 
+     AND user_id IS NOT NULL
+     ORDER BY timestamp DESC 
+     LIMIT 100`,
+    [groupChatId]
+  );
+
+  const settings = await db.getGroupSettings(groupChatId);
+  const excludedIds = [...(settings.excluded_user_ids || [])];
+  const foundUsers: string[] = [];
+  const notFound: string[] = [];
+
+  for (const username of usernames) {
+    // Find user ID by username
+    const user = recentMessages.rows.find(
+      (msg: any) => msg.username?.toLowerCase() === username.toLowerCase()
+    );
+
+    if (user && user.user_id) {
+      if (!excludedIds.includes(user.user_id)) {
+        excludedIds.push(user.user_id);
+        foundUsers.push(`@${user.username}`);
+      }
+    } else {
+      notFound.push(username);
+    }
+  }
+
+  if (foundUsers.length > 0) {
+    await db.updateGroupSettings(groupChatId, {
+      excludedUserIds: excludedIds
+    });
+    await ctx.reply(
+      `✅ Excluded ${foundUsers.length} user(s): ${foundUsers.join(', ')}`
+    );
+  }
+
+  if (notFound.length > 0) {
+    await ctx.reply(
+      `⚠️ Could not find these users: ${notFound.join(', ')}\n\n` +
+      `Make sure they have sent at least one message in this group.`
+    );
+  }
+}

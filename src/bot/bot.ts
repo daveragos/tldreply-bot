@@ -3,7 +3,7 @@ import { conversations, createConversation, ConversationFlavor } from '@grammyjs
 import { Database } from '../db/database';
 import { EncryptionService } from '../utils/encryption';
 import { Commands } from './commands';
-import { setupApiKey, updateApiKey } from './conversations';
+import { setupApiKey, updateApiKey, excludeUsers } from './conversations';
 import { setServices, clearExpiredState } from '../services/services';
 import { GeminiService } from '../services/gemini';
 
@@ -33,6 +33,7 @@ export class TLDRBot {
     // Register conversations
     this.bot.use(createConversation(setupApiKey));
     this.bot.use(createConversation(updateApiKey));
+    this.bot.use(createConversation(excludeUsers));
 
     new Commands(this.bot, this.db, this.encryption);
 
@@ -76,49 +77,10 @@ export class TLDRBot {
     console.log('🤖 TLDR Bot initialized');
   }
 
-  private async registerCommands() {
-    try {
-      // Register commands for private chats (default scope)
-      await this.bot.api.setMyCommands([
-        { command: 'start', description: 'Welcome message and help' },
-        { command: 'help', description: 'Show detailed help with examples' },
-        { command: 'continue_setup', description: 'Complete a pending group setup' },
-        { command: 'setup_group', description: 'Configure a group manually' },
-        { command: 'list_groups', description: 'List all your configured groups' },
-        { command: 'update_api_key', description: 'Update API key for a group' },
-        { command: 'remove_group', description: 'Remove a group configuration' },
-      ], {
-        scope: { type: 'default' }
-      });
-
-      // Register commands for group chats
-      await this.bot.api.setMyCommands([
-        { command: 'setup', description: 'Start group setup (auto-detects chat ID)' },
-        { command: 'tldr', description: 'Get summary (e.g., /tldr 1h, /tldr day, /tldr week)' },
-        { command: 'tldr_info', description: 'Show group configuration and status' },
-        { command: 'tldr_settings', description: 'Manage summary settings (admin only)' },
-        { command: 'tldr_help', description: 'Show help for group commands' },
-        { command: 'schedule', description: 'Set up automatic daily/weekly summaries (admin only)' },
-        { command: 'filter', description: 'Configure message filtering (admin only)' },
-        { command: 'enable', description: 'Enable TLDR bot for this group (admin only)' },
-        { command: 'disable', description: 'Disable TLDR bot for this group (admin only)' },
-      ], {
-        scope: { type: 'all_group_chats' }
-      });
-
-      console.log('✅ Bot commands registered successfully');
-    } catch (error) {
-      console.error('❌ Error registering bot commands:', error);
-      // Don't throw - bot can still work without command registration
-    }
-  }
 
   async start() {
     await this.bot.start();
     console.log('✅ Bot is running!');
-    
-    // Register bot commands for autocomplete menu
-    await this.registerCommands();
     
     // Run cleanup every 12 hours (summarize and delete messages older than 48 hours)
     this.cleanupInterval = setInterval(async () => {

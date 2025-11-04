@@ -131,6 +131,14 @@ If you prefer the manual method, you can still use `/setup_group <chat_id>` in p
 /tldr day     # Summarize last day
 /tldr week    # Summarize last week
 /tldr 3d      # Summarize last 3 days (max 7 days)
+/tldr 30h     # Summarize last 30 hours
+```
+
+**Count-based summaries:**
+```bash
+/tldr 300     # Summarize last 300 messages
+/tldr 1000    # Summarize last 1000 messages
+/tldr 50      # Summarize last 50 messages
 ```
 
 **Reply-based summaries:**

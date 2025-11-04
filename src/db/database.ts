@@ -112,8 +112,9 @@ export class Database {
   }
 
   async getMessagesSinceTimestamp(chatId: number, since: Date, limit: number = 1000): Promise<any[]> {
-    // Enforce maximum limit to prevent memory issues
-    const maxLimit = Math.min(limit, 1000);
+    // Allow up to 10000 messages for hierarchical summarization
+    // The GeminiService will handle chunking if messages exceed 1000
+    const maxLimit = Math.min(limit, 10000);
     const result = await this.query(
       'SELECT * FROM messages WHERE telegram_chat_id = $1 AND timestamp >= $2 ORDER BY timestamp ASC LIMIT $3',
       [chatId, since, maxLimit]
@@ -122,13 +123,25 @@ export class Database {
   }
 
   async getMessagesSinceMessageId(chatId: number, sinceMessageId: number, limit: number = 1000): Promise<any[]> {
-    // Enforce maximum limit to prevent memory issues
-    const maxLimit = Math.min(limit, 1000);
+    // Allow up to 10000 messages for hierarchical summarization
+    // The GeminiService will handle chunking if messages exceed 1000
+    const maxLimit = Math.min(limit, 10000);
     const result = await this.query(
       'SELECT * FROM messages WHERE telegram_chat_id = $1 AND message_id >= $2 ORDER BY message_id ASC LIMIT $3',
       [chatId, sinceMessageId, maxLimit]
     );
     return result.rows;
+  }
+
+  async getLastNMessages(chatId: number, count: number): Promise<any[]> {
+    // Get the last N messages, ordered by timestamp descending, then reverse to chronological order
+    const maxCount = Math.min(count, 10000); // Limit to 10000 messages
+    const result = await this.query(
+      'SELECT * FROM messages WHERE telegram_chat_id = $1 ORDER BY timestamp DESC, message_id DESC LIMIT $2',
+      [chatId, maxCount]
+    );
+    // Reverse to get chronological order (oldest first)
+    return result.rows.reverse();
   }
 
   async getMessagesToCleanup(hoursAgo: number): Promise<any[]> {

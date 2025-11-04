@@ -9,10 +9,10 @@ export class GeminiService {
 
   async summarizeMessages(
     messages: Array<{
-      username?: string;
-      firstName?: string;
-      content: string;
-      timestamp: string;
+    username?: string;
+    firstName?: string;
+    content: string;
+    timestamp: string;
     }>,
     options?: {
       customPrompt?: string | null;
@@ -22,6 +22,127 @@ export class GeminiService {
   ): Promise<string> {
     if (messages.length === 0) {
       return 'No messages found in the specified time range.';
+    }
+
+    // Use hierarchical summarization for large message sets (>1000 messages)
+    const CHUNK_SIZE = 900; // Use 900 to leave room for formatting
+    if (messages.length > 1000) {
+      return await this.summarizeLargeMessageSet(messages, options, CHUNK_SIZE);
+    }
+
+    // For smaller sets, use the base chunk summarization method
+    try {
+      return await this.summarizeChunk(messages, options);
+    } catch (error: any) {
+      // Wrap error with better context
+      const errorMessage = error.message || 'Unknown error';
+      if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+        throw new Error('Invalid API key. Please check your Gemini API key and ensure it\'s correct. You can update it using /update_api_key.');
+      } else if (errorMessage.includes('PERMISSION_DENIED') || errorMessage.includes('403')) {
+        throw new Error('Permission denied. Your API key may not have access to the Gemini API. Please check your API key permissions.');
+      } else if (errorMessage.includes('QUOTA_EXCEEDED') || errorMessage.includes('429')) {
+        throw new Error('API quota exceeded. Your Gemini API key has reached its rate limit or quota. Please try again later or check your API usage.');
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('TIMEOUT')) {
+        throw new Error('Request timeout. The API request took too long. Please try again.');
+      } else if (errorMessage.includes('network') || errorMessage.includes('ECONNREFUSED') || errorMessage.includes('ENOTFOUND')) {
+        throw new Error('Network error. Could not connect to the Gemini API. Please check your internet connection and try again.');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Hierarchical summarization for large message sets
+   * Splits messages into chunks, summarizes each chunk, then merges and summarizes again
+   */
+  private async summarizeLargeMessageSet(
+    messages: Array<{
+      username?: string;
+      firstName?: string;
+      content: string;
+      timestamp: string;
+    }>,
+    options?: {
+      customPrompt?: string | null;
+      summaryStyle?: string;
+    },
+    chunkSize: number = 900
+  ): Promise<string> {
+    const totalMessages = messages.length;
+    const chunks: Array<typeof messages> = [];
+    
+    // Split messages into chunks
+    for (let i = 0; i < messages.length; i += chunkSize) {
+      chunks.push(messages.slice(i, i + chunkSize));
+    }
+
+    console.log(`📊 Summarizing ${totalMessages} messages in ${chunks.length} chunks...`);
+
+    // Summarize each chunk (use base method to avoid recursion)
+    const chunkSummaries: string[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const chunkSummary = await this.summarizeChunk(chunk, options);
+      chunkSummaries.push(`[Chunk ${i + 1}/${chunks.length} - ${chunk.length} messages]:\n${chunkSummary}`);
+    }
+
+    // If we have only one chunk summary, return it (shouldn't happen, but safety check)
+    if (chunkSummaries.length === 1) {
+      return chunkSummaries[0];
+    }
+
+    // Merge all chunk summaries and create final summary
+    const mergedSummaries = chunkSummaries.join('\n\n---\n\n');
+    
+    // Create a prompt to merge summaries
+    const styleInstructions = this.getStyleInstructions(options?.summaryStyle || 'default');
+    const mergePrompt = `You are a helpful assistant that creates a comprehensive summary from multiple partial summaries of a Telegram group chat.
+
+${styleInstructions}
+
+You have received ${chunks.length} partial summaries covering ${totalMessages} total messages. Please create a unified, coherent summary that:
+- Combines all the important information from the partial summaries
+- Removes any redundancy or duplication
+- Maintains chronological order where relevant
+- Highlights the most important topics, decisions, and announcements
+- Preserves the key points from each partial summary
+
+Partial Summaries:
+${mergedSummaries}
+
+Unified Summary:`;
+
+    // Summarize the merged summaries
+    try {
+      const response = await this.ai.models.generateContent({
+        model: 'gemini-2.0-flash-001',
+        contents: mergePrompt,
+      });
+      return response.text || `Summary of ${totalMessages} messages (processed in ${chunks.length} chunks)`;
+    } catch (error: any) {
+      console.error('Error in hierarchical summarization:', error);
+      // Fallback: return the merged summaries as-is
+      return `Summary of ${totalMessages} messages:\n\n${mergedSummaries}`;
+    }
+  }
+
+  /**
+   * Base summarization method for a single chunk (no hierarchical processing)
+   */
+  private async summarizeChunk(
+    messages: Array<{
+      username?: string;
+      firstName?: string;
+      content: string;
+      timestamp: string;
+    }>,
+    options?: {
+      customPrompt?: string | null;
+      summaryStyle?: string;
+    }
+  ): Promise<string> {
+    if (messages.length === 0) {
+      return 'No messages in this chunk.';
     }
 
     // Format messages for context
@@ -35,12 +156,9 @@ export class GeminiService {
     let prompt = '';
     
     if (options?.customPrompt) {
-      // Use custom prompt if provided
       prompt = options.customPrompt.replace('{{messages}}', formattedMessages);
     } else {
-      // Use default prompt with style variations
       const styleInstructions = this.getStyleInstructions(options?.summaryStyle || 'default');
-      
       prompt = `You are a helpful assistant that summarizes Telegram group chat conversations. 
     ${styleInstructions}
     
@@ -57,10 +175,11 @@ export class GeminiService {
     Summary:`;
     }
 
+    // Call API with retry logic
     const maxRetries = 3;
-    const baseDelay = 1000; // 1 second
+    const baseDelay = 1000;
     
-    for (let attempt = retryCount; attempt < maxRetries; attempt++) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         const response = await this.ai.models.generateContent({
           model: 'gemini-2.0-flash-001',
@@ -68,57 +187,15 @@ export class GeminiService {
         });
         return response.text || 'Generated summary (no text returned)';
       } catch (error: any) {
-        console.error(`Gemini API error (attempt ${attempt + 1}/${maxRetries}):`, error);
-        
-        // Don't retry on these errors - they won't be fixed by retrying
-        const isNonRetryableError = 
-          error.message?.includes('API_KEY_INVALID') || 
-          error.message?.includes('401') || 
-          error.message?.includes('Unauthorized') ||
-          error.message?.includes('PERMISSION_DENIED') || 
-          error.message?.includes('403') ||
-          error.message?.includes('QUOTA_EXCEEDED') && attempt === maxRetries - 1; // Only non-retryable on last attempt
-        
-        if (isNonRetryableError) {
-          // Provide more specific error messages
-          if (error.message?.includes('API_KEY_INVALID') || error.message?.includes('401') || error.message?.includes('Unauthorized')) {
-            throw new Error('Invalid API key. Please check your Gemini API key and ensure it\'s correct. You can update it using /update_api_key.');
-          } else if (error.message?.includes('PERMISSION_DENIED') || error.message?.includes('403')) {
-            throw new Error('Permission denied. Your API key may not have access to the Gemini API. Please check your API key permissions.');
-          } else if (error.message?.includes('QUOTA_EXCEEDED') || error.message?.includes('429')) {
-            throw new Error('API quota exceeded. Your Gemini API key has reached its rate limit or quota. Please try again later or check your API usage.');
-          }
-        }
-        
-        // Retry on transient errors (timeout, network, rate limits on first attempts)
-        const isTransientError = 
-          error.message?.includes('timeout') || 
-          error.message?.includes('TIMEOUT') ||
-          error.message?.includes('network') || 
-          error.message?.includes('ECONNREFUSED') || 
-          error.message?.includes('ENOTFOUND') ||
-          error.message?.includes('429') && attempt < maxRetries - 1; // Rate limit - retry with backoff
-        
-        if (isTransientError && attempt < maxRetries - 1) {
-          // Exponential backoff: 1s, 2s, 4s
+        if (attempt < maxRetries - 1) {
           const delay = baseDelay * Math.pow(2, attempt);
-          console.log(`Retrying after ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
-          continue; // Retry
+          continue;
         }
-        
-        // If we get here, it's either the last attempt or a non-transient error
-        if (error.message?.includes('timeout') || error.message?.includes('TIMEOUT')) {
-          throw new Error('Request timeout. The API request took too long after multiple retries. Please try again.');
-        } else if (error.message?.includes('network') || error.message?.includes('ECONNREFUSED') || error.message?.includes('ENOTFOUND')) {
-          throw new Error('Network error. Could not connect to the Gemini API after multiple retries. Please check your internet connection and try again.');
-        } else {
-          throw new Error(`Failed to generate summary: ${error.message || 'Unknown error'}. Please check your API key and try again.`);
-        }
+        throw error;
       }
     }
     
-    // Should never reach here, but TypeScript needs it
     throw new Error('Failed to generate summary after multiple retries.');
   }
 

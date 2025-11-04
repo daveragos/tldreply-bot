@@ -15,7 +15,6 @@ export class Commands {
   // Rate limiting: track last command time per user/group
   private rateLimitMap: Map<string, number> = new Map(); // key -> timestamp
   private readonly RATE_LIMIT_SECONDS = 30; // 30 seconds between commands
-
   constructor(bot: Bot<MyContext>, db: Database, encryption: EncryptionService) {
     this.bot = bot;
     this.db = db;
@@ -518,11 +517,13 @@ export class Commands {
       '<b>📋 Commands:</b>\n\n' +
       '<b>/setup</b>\n' +
       '<i>Start group setup (admin only)</i>\n\n' +
-      '<b>/tldr [timeframe]</b>\n' +
-      '<i>Get summary for a time period</i>\n' +
+      '<b>/tldr [timeframe or count]</b>\n' +
+      '<i>Get summary for a time period or message count</i>\n' +
       '<i>Examples:</i>\n' +
       '<code>/tldr</code> - Last hour\n' +
       '<code>/tldr 6h</code> - Last 6 hours\n' +
+      '<code>/tldr 300</code> - Last 300 messages\n' +
+      '<code>/tldr 30h</code> - Last 30 hours\n' +
       '<code>/tldr day</code> - Last day\n' +
       '<code>/tldr week</code> - Last week\n\n' +
       '<b>Reply to message + /tldr</b>\n' +
@@ -1013,43 +1014,57 @@ export class Commands {
         return;
       }
 
-      // Handle time-based summary
+      // Handle time-based or count-based summary
       const args = ctx.message?.text?.split(' ') || [];
-      const timeframe = args[1] || '1h';
+      const input = args[1] || '1h';
       
-      // Validate timeframe input - warn if multiple words provided
+      // Validate input - warn if multiple words provided
       if (args.length > 2) {
         // User typed something like "/tldr very big hour" - warn but continue with default
         await ctx.reply(
-          '⚠️ Invalid timeframe format. Using default (1 hour).\n\n' +
+          '⚠️ Invalid format. Using default (1 hour).\n\n' +
           '<b>Valid formats:</b>\n' +
           '<code>/tldr</code> or <code>/tldr 1h</code> - Last hour\n' +
           '<code>/tldr 6h</code> - Last 6 hours\n' +
+          '<code>/tldr 300</code> - Last 300 messages\n' +
           '<code>/tldr day</code> - Last day\n' +
-          '<code>/tldr week</code> - Last week\n' +
-          '<code>/tldr 3d</code> - Last 3 days (max 7 days)',
+          '<code>/tldr week</code> - Last week',
           { parse_mode: 'HTML' }
         );
       }
       
-      const since = this.parseTimeframe(timeframe);
-
       loadingMsg = await ctx.reply('⏳ Generating summary...');
 
-      const messages = await this.db.getMessagesSinceTimestamp(chat.id, since, 1000);
+      // Check if input is a count (pure number) or time-based (has h/d suffix or keywords)
+      let messages: any[];
+      let summaryLabel: string;
+      
+      if (this.isCountBased(input)) {
+        // Count-based: Get last N messages
+        const count = this.parseCount(input);
+        summaryLabel = `last ${count} messages`;
+        messages = await this.db.getLastNMessages(chat.id, count);
+      } else {
+        // Time-based: Get messages since timestamp
+        const since = this.parseTimeframe(input);
+        summaryLabel = input;
+        messages = await this.db.getMessagesSinceTimestamp(chat.id, since, 10000);
+      }
       if (messages.length === 0) {
-        await ctx.api.editMessageText(chat.id, loadingMsg.message_id, '📭 No messages found in the specified time range.');
+        const errorMsg = this.isCountBased(input) 
+          ? '📭 No messages found in the database.'
+          : '📭 No messages found in the specified time range.';
+        await ctx.api.editMessageText(chat.id, loadingMsg.message_id, errorMsg);
         return;
       }
 
-      // Validate message count (already limited by database query, but double-check)
+      // Update loading message if processing large set
       if (messages.length > 1000) {
         await ctx.api.editMessageText(
           chat.id,
           loadingMsg.message_id,
-          '⚠️ Too many messages to summarize. Please use a shorter time range.'
+          `⏳ Processing ${messages.length} messages in chunks... This may take a moment.`
         );
-        return;
       }
 
       // Get group settings for customization
@@ -1077,7 +1092,7 @@ export class Commands {
       await ctx.api.editMessageText(
         chat.id,
         loadingMsg.message_id,
-        `📝 <b>TLDR Summary</b> (${timeframe})\n\n${summary}`,
+        `📝 <b>TLDR Summary</b> (${summaryLabel})\n\n${summary}`,
         { parse_mode: 'HTML' }
       );
     } catch (error: any) {
@@ -1133,20 +1148,19 @@ export class Commands {
 
       loadingMsg = await ctx.reply('⏳ Generating summary...');
 
-      const messages = await this.db.getMessagesSinceMessageId(chat.id, fromMessageId, 1000);
+      const messages = await this.db.getMessagesSinceMessageId(chat.id, fromMessageId, 10000);
       if (messages.length === 0) {
         await ctx.api.editMessageText(chat.id, loadingMsg.message_id, '📭 No messages found from this point.');
         return;
       }
 
-      // Validate message count (already limited by database query, but double-check)
+      // Update loading message if processing large set
       if (messages.length > 1000) {
         await ctx.api.editMessageText(
           chat.id,
           loadingMsg.message_id,
-          '⚠️ Too many messages to summarize. Please reply to a more recent message.'
+          `⏳ Processing ${messages.length} messages in chunks... This may take a moment.`
         );
-        return;
       }
 
       // Get group settings for customization
@@ -1505,6 +1519,24 @@ export class Commands {
         .text('↩️ Back', 'settings_back');
 
       const excludedCount = settings.excluded_user_ids?.length || 0;
+      
+      // Get usernames for excluded users
+      let excludedUsersList = '';
+      if (excludedCount > 0 && settings.excluded_user_ids) {
+        const userMessages = await this.db.query(
+          `SELECT DISTINCT user_id, username, first_name 
+           FROM messages 
+           WHERE telegram_chat_id = $1 
+           AND user_id = ANY($2::bigint[])
+           ORDER BY username, first_name`,
+          [chat.id, settings.excluded_user_ids]
+        );
+        
+        const userList = userMessages.rows.map((u: any) => 
+          u.username ? `@${u.username}` : (u.first_name || `ID:${u.user_id}`)
+        );
+        excludedUsersList = `\n<b>Excluded:</b> ${userList.join(', ')}`;
+      }
 
       await ctx.reply(
         '🚫 <b>Message Filtering</b>\n\n' +
@@ -1512,7 +1544,7 @@ export class Commands {
         `<b>Current Filters:</b>\n` +
         `Bot Messages: ${settings.exclude_bot_messages ? '✅ Excluded' : '❌ Included'}\n` +
         `Commands: ${settings.exclude_commands ? '✅ Excluded' : '❌ Included'}\n` +
-        `Excluded Users: ${excludedCount} user${excludedCount !== 1 ? 's' : ''}\n\n` +
+        `Excluded Users: ${excludedCount} user${excludedCount !== 1 ? 's' : ''}${excludedUsersList}\n\n` +
         'Tap to toggle:',
         {
           parse_mode: 'HTML',
@@ -1678,14 +1710,20 @@ export class Commands {
 
   private async handleFilterUsers(ctx: MyContext) {
     await ctx.answerCallbackQuery();
-    await ctx.editMessageText(
-      '👤 <b>Exclude Users</b>\n\n' +
-      'To exclude specific users, send their user IDs separated by commas.\n\n' +
-      'Example: <code>123456789, 987654321</code>\n\n' +
-      'Send /cancel to go back.',
-      { parse_mode: 'HTML' }
-    );
-    // TODO: Add conversation handler for user exclusion
+    const chat = ctx.chat;
+    if (!chat || chat.type === 'private') return;
+
+    const userId = ctx.from?.id;
+    if (!userId) return;
+
+    const isAdmin = await this.isAdminOrCreator(ctx, chat.id, userId);
+    if (!isAdmin) {
+      await ctx.answerCallbackQuery('❌ Only admins can manage user exclusions');
+      return;
+    }
+
+    // Enter the exclude users conversation
+    await ctx.conversation.enter('excludeUsers', { overwrite: true });
   }
 
   // Add style button handlers
@@ -1782,6 +1820,30 @@ export class Commands {
     }
   }
 
+  /**
+   * Check if input is count-based (pure number) vs time-based (has suffix or keywords)
+   */
+  private isCountBased(input: string): boolean {
+    const normalized = input.toLowerCase().trim();
+    // If it's a pure number (no h, d, day, week), it's count-based
+    return /^\d+$/.test(normalized);
+  }
+
+  /**
+   * Parse count from input (e.g., "300" -> 300)
+   */
+  private parseCount(input: string): number {
+    const value = parseInt(input.trim(), 10);
+    if (isNaN(value) || value <= 0) {
+      return 100; // Default to 100 messages
+    }
+    // Cap at 10000 messages
+    return Math.min(value, 10000);
+  }
+
+  /**
+   * Parse timeframe and return a Date object (for time-based summaries)
+   */
   private parseTimeframe(timeframe: string): Date {
     const now = Date.now();
     const MAX_HOURS = 168; // 7 days maximum
