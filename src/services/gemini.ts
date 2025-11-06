@@ -107,6 +107,8 @@ You have received ${chunks.length} partial summaries covering ${totalMessages} t
 - Highlights the most important topics, decisions, and announcements
 - Preserves the key points from each partial summary
 
+CRITICAL: When referring to users in the summary, ALWAYS use their actual username or name (as mentioned in the partial summaries) instead of generic terms like "A user", "Another user", "Someone", etc. Use the exact username or name from the conversation.
+
 Partial Summaries:
 ${mergedSummaries}
 
@@ -168,6 +170,8 @@ Unified Summary:`;
     - Important announcements
     - Ongoing questions or unresolved issues
     - Skip greetings, emojis-only messages, and spam
+    
+    CRITICAL: When referring to users in the summary, ALWAYS use their actual username or name (as shown in square brackets like [username]) instead of generic terms like "A user", "Another user", "Someone", etc. Use the exact username or name from the conversation.
     
     IMPORTANT: Format your response using markdown:
     - Use **bold** for important topics or section headers
