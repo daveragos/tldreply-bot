@@ -3,7 +3,7 @@ pipeline {
   
   triggers {
     // Trigger pipeline on push to any branch
-    pollSCM('H/5 * * * *') // Poll every 5 minutes for changes
+    pollSCM('H/1 * * * *') // Poll every 5 minutes for changes
   }
   
   environment {
