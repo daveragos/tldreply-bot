@@ -88,6 +88,7 @@ pipeline {
           pm2 startup systemd | tail -n 1 | bash || echo "PM2 startup may already be configured or requires manual sudo setup"
 
           # Save PM2 process list (required for auto-start)
+          # save
           pm2 save
           """
         }
