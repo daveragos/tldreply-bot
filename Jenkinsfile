@@ -6,12 +6,6 @@ pipeline {
         PROJECT_DIR = '/var/www/tldreply-bot'
     }
 
-    tools {
-        // Install the NodeJS version configured in the Jenkins Global Tool configuration
-        // Make sure Node.js is configured in: Manage Jenkins -> Global Tool Configuration
-        nodejs 'nodejs'
-    }
-
     options {
         timestamps()
         buildDiscarder(logRotator(numToKeepStr: '10'))
