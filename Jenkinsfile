@@ -4,7 +4,6 @@ pipeline {
 
     environment {
        
-       PATH = "${env.PATH}:./node_modules/.bin"
         
         NODE_ENV = "production"
         PM2_APP_NAME = "trlreply-bot" // Use the name from your environment variables
