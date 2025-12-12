@@ -1,56 +1,58 @@
 /**
- * FINAL Declarative Pipeline - Uses 'tools' directive for robust Node.js environment setup.
+ * FINAL Declarative Pipeline - Uses 'tools' for Node version and 'npx' for reliable local execution.
  */
 pipeline {
-    // Agent: Run the job on any available Jenkins agent.
     agent any 
 
-    // FIX: Use the 'tools' directive to install and put the 'node20' tool in the PATH
     tools {
-        // The name MUST match the configuration you set in Manage Jenkins -> Tools (image_e531be.png)
+        // Keeps Node.js 20 installed and available (Fixes Node version warnings)
         nodejs 'node20' 
     }
 
     environment {
-
-        PATH = "${env.PATH}:./node_modules/.bin"
-        
-        // These variables are fine
+        // FIX: REMOVED the problematic PATH update.
         NODE_ENV = "production"
         PM2_APP_NAME = "trlreply-bot"
     }
 
     stages {
-        // Stage 1: Dependency Installation (Removed node('node20') wrapper)
         stage('📦 Install Dependencies') {
             steps {
                 echo '⬇️ Installing dependencies...'
-                // 'npm ci' will now work because 'nodejs 'node20'' set the PATH
                 sh 'npm ci' 
             }
         }
 
-        // Stage 2: Code Quality Checks (Simplified: removed node() and script() wrappers)
+        // Stage 2: Code Quality Checks (FIXED with npx)
         stage('🧪 Lint, Format, & Test (Parallel)') {
-            parallel { // Use the native Declarative parallel directive now
+            parallel {
                 stage('Lint Check') { 
-                    steps { sh 'npm run lint' } // Works because Node.js is in PATH
+                    steps { 
+                        echo '🧹 Running ESLint...'; 
+                        // CRITICAL FIX: Use npx to find the local executable
+                        sh 'npx npm run lint' 
+                    }
                 }
                 stage('Format Check') { 
-                    steps { sh 'npm run format:check' } 
+                    steps { 
+                        echo '✨ Running Prettier...'; 
+                        // CRITICAL FIX: Use npx to find the local executable
+                        sh 'npx npm run format:check' 
+                    } 
                 }
             }
         }
 
-        // Stage 3: Build Application
+        // Stage 3: Build Application (FIXED with npx)
         stage('🔨 Build Application') {
             steps {
                 echo '🛠️ Compiling TypeScript...'
-                sh 'npm run build'
+                // CRITICAL FIX: Use npx to find the local executable
+                sh 'npx npm run build'
             }
         }
 
-        // Stage 4: Deploy Application
+        // Stage 4: Deploy Application (PM2 is typically globally installed, so no npx needed)
         stage('🚀 Deploy with PM2') {
             steps {
                 echo "☁️ Deploying application: ${env.PM2_APP_NAME}"
@@ -65,7 +67,6 @@ pipeline {
         }
     }
 
-    // Post-actions remain correct
     post {
         always {
             echo '🧹 Cleaning up workspace...'
