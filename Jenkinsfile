@@ -6,7 +6,7 @@ pipeline {
 
     tools {
         // Keeps Node.js 20 installed and available (Fixes Node version warnings)
-        nodejs 'node20' 
+        nodejs 'node22' 
     }
 
     environment {
