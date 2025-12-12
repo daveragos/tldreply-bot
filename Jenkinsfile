@@ -1,6 +1,6 @@
 /**
- * CORRECTED FINAL Declarative Pipeline.
- * Fixes syntax error by nesting the 'node' step inside the 'steps' block for each stage.
+ * FINAL Declarative Pipeline for tldreply-bot CI/CD.
+ * Uses the 'node' wrapper with label 'node20' and has correct syntax for parallel steps.
  */
 pipeline {
     agent any
@@ -13,30 +13,36 @@ pipeline {
     stages {
         // Stage 1: Dependency Installation
         stage('📦 Install Dependencies') {
-            steps { // <--- CORRECT: The 'steps' block is mandatory
+            steps {
                 node('node20') { 
                     echo '⬇️ Installing dependencies...'
                     sh 'npm ci' 
                 }
-            } // <--- END of 'steps'
+            }
         }
 
-        // Stage 2: Code Quality Checks
-        stage('🧪 Lint, Format, & Test (Parallel)') {
-            steps { // <--- CORRECT: The 'steps' block is mandatory
+        // Stage 2: Code Quality Checks (Corrected Parallel Syntax)
+        stage('🧪 Lint, Format (Parallel)') {
+            steps {
                 node('node20') { 
-                    parallel {
-                        // NOTE: 'parallel' contains 'stage' directives, which contain their own 'steps'
-                        stage('Lint Check') { steps { sh 'npm run lint' } }
-                        stage('Format Check') { steps { sh 'npm run format:check' } }
-                    }
+                    // Use the parallel step with named blocks for concurrency
+                    parallel(
+                        'Lint Check': { 
+                            echo '🧹 Running ESLint...'; 
+                            sh 'npm run lint' 
+                        },
+                        'Format Check': { 
+                            echo '✨ Running Prettier...'; 
+                            sh 'npm run format:check' 
+                        },                      
+                    )
                 }
-            } // <--- END of 'steps'
+            }
         }
 
         // Stage 3: Build Application
         stage('🔨 Build Application') {
-            steps { // <--- CORRECT: The 'steps' block is mandatory
+            steps {
                 node('node20') { 
                     echo '🛠️ Compiling TypeScript...'
                     sh 'npm run build'
@@ -46,7 +52,7 @@ pipeline {
 
         // Stage 4: Deploy Application
         stage('🚀 Deploy with PM2') {
-            steps { // <--- CORRECT: The 'steps' block is mandatory
+            steps {
                 node('node20') { 
                     echo "☁️ Deploying application: ${env.PM2_APP_NAME}"
                     
@@ -61,7 +67,6 @@ pipeline {
         }
     }
 
-    // Post-actions remain correct
     post {
         always {
             echo '🧹 Cleaning up workspace...'
