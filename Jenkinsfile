@@ -12,6 +12,10 @@ pipeline {
     environment {
         // FIX: REMOVED the problematic PATH update.
         PM2_APP_NAME = "trlreply-bot"
+        // Load secrets from Jenkins credentials
+        TELEGRAM_TOKEN = credentials('telegram-token')
+        DATABASE_URL = credentials('database-url')
+        ENCRYPTION_SECRET = credentials('encryption-secret')
     }
 
     stages {
@@ -60,7 +64,8 @@ pipeline {
                     pm2 describe $PM2_APP_NAME > /dev/null 2>&1
                     if [ $? -eq 0 ]; then pm2 delete $PM2_APP_NAME; fi
                 '''
-                sh "NODE_ENV=production pm2 start dist/index.js --name $PM2_APP_NAME"
+                // Ensure production env for runtime and pass secrets
+                sh "NODE_ENV=production TELEGRAM_TOKEN=$TELEGRAM_TOKEN DATABASE_URL=$DATABASE_URL ENCRYPTION_SECRET=$ENCRYPTION_SECRET pm2 start dist/index.js --name $PM2_APP_NAME"
                 sh 'pm2 save'
             }
         }
