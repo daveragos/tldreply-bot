@@ -60,16 +60,24 @@ pipeline {
             steps {
                 echo "☁️ Deploying application: ${env.PM2_APP_NAME}"
                 
+                // Check if app exists, then either restart or start
                 sh '''
                     if pm2 describe $PM2_APP_NAME > /dev/null 2>&1; then
-                        echo "App $PM2_APP_NAME is running. Deleting..."
-                        pm2 delete $PM2_APP_NAME
+                        echo "App $PM2_APP_NAME is already running. Reloading with new code & env..."
+                        NODE_ENV=production \
+                        TELEGRAM_TOKEN=$TELEGRAM_TOKEN \
+                        DATABASE_URL=$DATABASE_URL \
+                        ENCRYPTION_SECRET=$ENCRYPTION_SECRET \
+                        pm2 restart $PM2_APP_NAME --update-env
                     else
-                        echo "App $PM2_APP_NAME is not running."
+                        echo "App $PM2_APP_NAME is not running. Starting fresh..."
+                        NODE_ENV=production \
+                        TELEGRAM_TOKEN=$TELEGRAM_TOKEN \
+                        DATABASE_URL=$DATABASE_URL \
+                        ENCRYPTION_SECRET=$ENCRYPTION_SECRET \
+                        pm2 start dist/index.js --name $PM2_APP_NAME
                     fi
                 '''
-                // Ensure production env for runtime and pass secrets
-                sh "NODE_ENV=production TELEGRAM_TOKEN=$TELEGRAM_TOKEN DATABASE_URL=$DATABASE_URL ENCRYPTION_SECRET=$ENCRYPTION_SECRET pm2 start dist/index.js --name $PM2_APP_NAME"
                 sh 'pm2 save'
                 sh 'pm2 list'
             }
