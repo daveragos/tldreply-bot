@@ -9,10 +9,10 @@ export class GeminiService {
 
   async summarizeMessages(
     messages: Array<{
-    username?: string;
-    firstName?: string;
-    content: string;
-    timestamp: string;
+      username?: string;
+      firstName?: string;
+      content: string;
+      timestamp: string;
     }>,
     options?: {
       customPrompt?: string | null;
@@ -36,16 +36,32 @@ export class GeminiService {
     } catch (error: any) {
       // Wrap error with better context
       const errorMessage = error.message || 'Unknown error';
-      if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
-        throw new Error('Invalid API key. Please check your Gemini API key and ensure it\'s correct. You can update it using /update_api_key.');
+      if (
+        errorMessage.includes('API_KEY_INVALID') ||
+        errorMessage.includes('401') ||
+        errorMessage.includes('Unauthorized')
+      ) {
+        throw new Error(
+          "Invalid API key. Please check your Gemini API key and ensure it's correct. You can update it using /update_api_key."
+        );
       } else if (errorMessage.includes('PERMISSION_DENIED') || errorMessage.includes('403')) {
-        throw new Error('Permission denied. Your API key may not have access to the Gemini API. Please check your API key permissions.');
+        throw new Error(
+          'Permission denied. Your API key may not have access to the Gemini API. Please check your API key permissions.'
+        );
       } else if (errorMessage.includes('QUOTA_EXCEEDED') || errorMessage.includes('429')) {
-        throw new Error('API quota exceeded. Your Gemini API key has reached its rate limit or quota. Please try again later or check your API usage.');
+        throw new Error(
+          'API quota exceeded. Your Gemini API key has reached its rate limit or quota. Please try again later or check your API usage.'
+        );
       } else if (errorMessage.includes('timeout') || errorMessage.includes('TIMEOUT')) {
         throw new Error('Request timeout. The API request took too long. Please try again.');
-      } else if (errorMessage.includes('network') || errorMessage.includes('ECONNREFUSED') || errorMessage.includes('ENOTFOUND')) {
-        throw new Error('Network error. Could not connect to the Gemini API. Please check your internet connection and try again.');
+      } else if (
+        errorMessage.includes('network') ||
+        errorMessage.includes('ECONNREFUSED') ||
+        errorMessage.includes('ENOTFOUND')
+      ) {
+        throw new Error(
+          'Network error. Could not connect to the Gemini API. Please check your internet connection and try again.'
+        );
       }
       throw error;
     }
@@ -70,7 +86,7 @@ export class GeminiService {
   ): Promise<string> {
     const totalMessages = messages.length;
     const chunks: Array<typeof messages> = [];
-    
+
     // Split messages into chunks
     for (let i = 0; i < messages.length; i += chunkSize) {
       chunks.push(messages.slice(i, i + chunkSize));
@@ -83,7 +99,9 @@ export class GeminiService {
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       const chunkSummary = await this.summarizeChunk(chunk, options);
-      chunkSummaries.push(`[Chunk ${i + 1}/${chunks.length} - ${chunk.length} messages]:\n${chunkSummary}`);
+      chunkSummaries.push(
+        `[Chunk ${i + 1}/${chunks.length} - ${chunk.length} messages]:\n${chunkSummary}`
+      );
     }
 
     // If we have only one chunk summary, return it (shouldn't happen, but safety check)
@@ -93,7 +111,7 @@ export class GeminiService {
 
     // Merge all chunk summaries and create final summary
     const mergedSummaries = chunkSummaries.join('\n\n---\n\n');
-    
+
     // Create a prompt to merge summaries
     const styleInstructions = this.getStyleInstructions(options?.summaryStyle || 'default');
     const mergePrompt = `You are a helpful assistant that creates a comprehensive summary from multiple partial summaries of a Telegram group chat.
@@ -126,7 +144,10 @@ Unified Summary:`;
         model: 'gemini-2.0-flash-001',
         contents: mergePrompt,
       });
-      return response.text || `Summary of ${totalMessages} messages (processed in ${chunks.length} chunks)`;
+      return (
+        response.text ||
+        `Summary of ${totalMessages} messages (processed in ${chunks.length} chunks)`
+      );
     } catch (error: any) {
       console.error('Error in hierarchical summarization:', error);
       // Fallback: return the merged summaries as-is
@@ -154,16 +175,18 @@ Unified Summary:`;
     }
 
     // Format messages for context
-    const formattedMessages = messages.map((msg, idx) => {
-      // Use @username if available, otherwise use firstName without @
-      const user = msg.username ? `@${msg.username}` : (msg.firstName || 'Unknown');
-      const content = msg.content;
-      return `${idx + 1}. ${user}: ${content}`;
-    }).join('\n\n');
+    const formattedMessages = messages
+      .map((msg, idx) => {
+        // Use @username if available, otherwise use firstName without @
+        const user = msg.username ? `@${msg.username}` : msg.firstName || 'Unknown';
+        const content = msg.content;
+        return `${idx + 1}. ${user}: ${content}`;
+      })
+      .join('\n\n');
 
     // Build base prompt
     let prompt = '';
-    
+
     if (options?.customPrompt) {
       prompt = options.customPrompt.replace('{{messages}}', formattedMessages);
     } else {
@@ -202,7 +225,7 @@ Unified Summary:`;
     // Call API with retry logic
     const maxRetries = 3;
     const baseDelay = 1000;
-    
+
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         const response = await this.ai.models.generateContent({
@@ -219,7 +242,7 @@ Unified Summary:`;
         throw error;
       }
     }
-    
+
     throw new Error('Failed to generate summary after multiple retries.');
   }
 

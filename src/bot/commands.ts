@@ -65,17 +65,17 @@ export class Commands {
       await ctx.answerCallbackQuery();
       await this.handleContinueSetup(ctx);
     });
-    
+
     // Remove group button handlers
     this.bot.callbackQuery(/^remove_group_(-?\d+)$/, this.handleRemoveGroupButton.bind(this));
     this.bot.callbackQuery('cancel_remove', async (ctx: MyContext) => {
       await ctx.answerCallbackQuery('Cancelled');
       await ctx.editMessageText('❌ Group removal cancelled.');
     });
-    
+
     // Update API key button handlers
     this.bot.callbackQuery(/^update_key_(-?\d+)$/, this.handleUpdateApiKeyButton.bind(this));
-    
+
     // Settings button handlers
     this.bot.callbackQuery('settings_style', this.handleSettingsStyle.bind(this));
     this.bot.callbackQuery('settings_prompt', this.handleSettingsPrompt.bind(this));
@@ -83,22 +83,25 @@ export class Commands {
     this.bot.callbackQuery('settings_schedule', this.handleSchedule.bind(this));
     this.bot.callbackQuery('settings_view', this.handleSettingsView.bind(this));
     this.bot.callbackQuery('settings_back', this.handleSettingsBack.bind(this));
-    
+
     // Schedule button handlers
     this.bot.callbackQuery(/^schedule_toggle_(-?\d+)$/, this.handleScheduleToggle.bind(this));
-    this.bot.callbackQuery(/^schedule_freq_(daily|weekly)_(-?\d+)$/, this.handleScheduleFrequency.bind(this));
-    
+    this.bot.callbackQuery(
+      /^schedule_freq_(daily|weekly)_(-?\d+)$/,
+      this.handleScheduleFrequency.bind(this)
+    );
+
     // Filter button handlers
     this.bot.callbackQuery(/^filter_bot_(-?\d+)$/, this.handleFilterBot.bind(this));
     this.bot.callbackQuery(/^filter_cmd_(-?\d+)$/, this.handleFilterCmd.bind(this));
     this.bot.callbackQuery(/^filter_users_(-?\d+)$/, this.handleFilterUsers.bind(this));
-    
+
     // Style button handlers
     this.setupStyleHandlers();
 
     // Message handler for caching
     this.bot.on('message', this.handleMessageCache.bind(this));
-    
+
     // Handle edited messages - update the cached message content
     this.bot.on('edited_message', this.handleEditedMessageCache.bind(this));
   }
@@ -125,12 +128,12 @@ export class Commands {
 
           await ctx.reply(
             `👋 Welcome back!\n\n` +
-            `⚠️ You have a pending group setup (Chat ID: <code>${groupChatId}</code>)\n\n` +
-            `Please provide your Gemini API key to complete the setup.\n\n` +
-            `Run /continue_setup to provide your API key.`,
+              `⚠️ You have a pending group setup (Chat ID: <code>${groupChatId}</code>)\n\n` +
+              `Please provide your Gemini API key to complete the setup.\n\n` +
+              `Run /continue_setup to provide your API key.`,
             {
               parse_mode: 'HTML',
-              reply_markup: keyboard
+              reply_markup: keyboard,
             }
           );
           return;
@@ -150,13 +153,13 @@ export class Commands {
 
       await ctx.reply(
         `👋 Welcome to TLDR Bot!\n\n` +
-        `This bot helps summarize Telegram group chats using Google's Gemini AI.\n\n` +
-        `🔒 <b>Privacy:</b> Messages are cached for up to 48 hours and automatically deleted.\n\n` +
-        `<i>Use the buttons below or type commands to get started!</i>\n\n` +
-        `<b>💡 Tip:</b> You can run /setup directly in your group to start setup!`,
+          `This bot helps summarize Telegram group chats using Google's Gemini AI.\n\n` +
+          `🔒 <b>Privacy:</b> Messages are cached for up to 48 hours and automatically deleted.\n\n` +
+          `<i>Use the buttons below or type commands to get started!</i>\n\n` +
+          `<b>💡 Tip:</b> You can run /setup directly in your group to start setup!`,
         {
           parse_mode: 'HTML',
-          reply_markup: keyboard
+          reply_markup: keyboard,
         }
       );
     }
@@ -170,7 +173,7 @@ export class Commands {
     if (chat.type === 'private') {
       await ctx.reply(
         '❌ This command should be used in a group chat.\n\n' +
-        '<b>Alternative:</b> Use /setup_group in private chat to setup by username or chat ID.',
+          '<b>Alternative:</b> Use /setup_group in private chat to setup by username or chat ID.',
         { parse_mode: 'HTML' }
       );
       return;
@@ -192,7 +195,7 @@ export class Commands {
     if (!isAdmin) {
       await ctx.reply(
         '❌ Only group admins can configure the bot.\n\n' +
-        'Please ask an admin to run this command.'
+          'Please ask an admin to run this command.'
       );
       return;
     }
@@ -203,8 +206,8 @@ export class Commands {
       if (existingGroup && existingGroup.gemini_api_key_encrypted) {
         await ctx.reply(
           '✅ This group is already configured!\n\n' +
-          'You can use /tldr to get summaries.\n' +
-          'Run /tldr_info for more details.'
+            'You can use /tldr to get summaries.\n' +
+            'Run /tldr_info for more details.'
         );
         return;
       }
@@ -218,15 +221,15 @@ export class Commands {
 
       await ctx.reply(
         `✅ <b>Setup started for "${groupName}"!</b>\n\n` +
-        `<b>Next steps:</b>\n` +
-        `1. Open a private chat with me (@${ctx.me.username})\n` +
-        `2. Run /continue_setup\n` +
-        `3. Provide your Gemini API key\n\n` +
-        `<i>💡 The group ID has been automatically detected. No need to find it manually!</i>\n\n` +
-        `<i>Get your API key: https://makersuite.google.com/app/apikey</i>`,
+          `<b>Next steps:</b>\n` +
+          `1. Open a private chat with me (@${ctx.me.username})\n` +
+          `2. Run /continue_setup\n` +
+          `3. Provide your Gemini API key\n\n` +
+          `<i>💡 The group ID has been automatically detected. No need to find it manually!</i>\n\n` +
+          `<i>Get your API key: https://makersuite.google.com/app/apikey</i>`,
         {
           parse_mode: 'HTML',
-          link_preview_options: { is_disabled: true }
+          link_preview_options: { is_disabled: true },
         }
       );
     } catch (error) {
@@ -252,9 +255,9 @@ export class Commands {
       if (pendingGroups.rows.length === 0) {
         await ctx.reply(
           '❌ No pending group setup found.\n\n' +
-          '<b>To start setup:</b>\n' +
-          '• Run /setup in your group (easiest!)\n' +
-          '• Or run /setup_group in private chat',
+            '<b>To start setup:</b>\n' +
+            '• Run /setup in your group (easiest!)\n' +
+            '• Or run /setup_group in private chat',
           { parse_mode: 'HTML' }
         );
         return;
@@ -265,28 +268,28 @@ export class Commands {
       // Verify the group still exists and bot is in it
       try {
         const chatInfo = await ctx.api.getChat(groupChatId);
-        
+
         // Verify user is still admin of the group
         const isAdmin = await this.isAdminOrCreator(ctx, groupChatId, chat.id);
         if (!isAdmin) {
           await ctx.reply(
             '❌ You must be an admin of the group to complete setup.\n\n' +
-            'If you were removed as admin, please ask a current admin to run /setup in the group.'
+              'If you were removed as admin, please ask a current admin to run /setup in the group.'
           );
           return;
         }
-        
+
         const groupName = 'title' in chatInfo ? chatInfo.title : `Group ${groupChatId}`;
 
         await ctx.reply(
           `✅ Found pending setup for: <b>${groupName}</b>\n\n` +
-          `Please paste your Gemini API key to complete the setup.\n\n` +
-          `<i>Get your API key from:</i>\n` +
-          `https://makersuite.google.com/app/apikey\n\n` +
-          `<b>🔒 Security:</b> Your API key will be encrypted and only used for this group.`,
+            `Please paste your Gemini API key to complete the setup.\n\n` +
+            `<i>Get your API key from:</i>\n` +
+            `https://makersuite.google.com/app/apikey\n\n` +
+            `<b>🔒 Security:</b> Your API key will be encrypted and only used for this group.`,
           {
             parse_mode: 'HTML',
-            link_preview_options: { is_disabled: true }
+            link_preview_options: { is_disabled: true },
           }
         );
 
@@ -294,9 +297,9 @@ export class Commands {
       } catch (error) {
         await ctx.reply(
           '❌ Could not access the group. Please make sure:\n' +
-          '• The bot is still in the group\n' +
-          '• The group exists\n\n' +
-          'Try running /setup in your group again.'
+            '• The bot is still in the group\n' +
+            '• The group exists\n\n' +
+            'Try running /setup in your group again.'
         );
       }
     } catch (error) {
@@ -316,15 +319,15 @@ export class Commands {
     if (args.length < 2) {
       await ctx.reply(
         '❌ Usage:\n\n' +
-        '<b>For public groups (with @username):</b>\n' +
-        '<code>/setup_group @group_username</code>\n\n' +
-        '<b>For private groups (no @username):</b>\n' +
-        '<code>/setup_group &lt;chat_id&gt;</code>\n\n' +
-        '<i>To get the chat ID for a private group:</i>\n' +
-        '1. Add @userinfobot to your group\n' +
-        '2. Forward any message from your group to @userinfobot\n' +
-        '3. It will reply with the chat ID (looks like: <code>-123456789</code>)\n' +
-        '4. Use that ID: <code>/setup_group -123456789</code>',
+          '<b>For public groups (with @username):</b>\n' +
+          '<code>/setup_group @group_username</code>\n\n' +
+          '<b>For private groups (no @username):</b>\n' +
+          '<code>/setup_group &lt;chat_id&gt;</code>\n\n' +
+          '<i>To get the chat ID for a private group:</i>\n' +
+          '1. Add @userinfobot to your group\n' +
+          '2. Forward any message from your group to @userinfobot\n' +
+          '3. It will reply with the chat ID (looks like: <code>-123456789</code>)\n' +
+          '4. Use that ID: <code>/setup_group -123456789</code>',
         { parse_mode: 'HTML' }
       );
       return;
@@ -347,8 +350,8 @@ export class Commands {
         // Additional verification: check if it's actually a group/supergroup
         if (chatInfo.type !== 'supergroup' && chatInfo.type !== 'group') {
           await ctx.reply(
-            '❌ Invalid chat type. Please make sure you\'re using a group chat ID, not a private chat ID.\n\n' +
-            '<b>Private group chat IDs</b> are negative numbers (e.g., <code>-123456789</code>).',
+            "❌ Invalid chat type. Please make sure you're using a group chat ID, not a private chat ID.\n\n" +
+              '<b>Private group chat IDs</b> are negative numbers (e.g., <code>-123456789</code>).',
             { parse_mode: 'HTML' }
           );
           return;
@@ -363,24 +366,24 @@ export class Commands {
         // (getChat will fail if bot is not a member, which is good)
 
         const chatId = chatInfo.id as number;
-        
+
         // Check if user is admin or creator of the group
         const isAdmin = await this.isAdminOrCreator(ctx, chatId, chat.id);
         if (!isAdmin) {
           await ctx.reply(
             '❌ Only group admins can configure the bot.\n\n' +
-            'Please ask an admin to run this command.',
+              'Please ask an admin to run this command.',
             { parse_mode: 'HTML' }
           );
           return;
         }
-        
+
         // Check if group already exists
         const existingGroup = await this.db.getGroup(chatId);
         if (existingGroup && existingGroup.gemini_api_key_encrypted) {
           await ctx.reply(
             '⚠️ This group is already configured!\n\n' +
-            'If you want to update the API key, please use /remove_group first, then set it up again.',
+              'If you want to update the API key, please use /remove_group first, then set it up again.',
             { parse_mode: 'HTML' }
           );
           return;
@@ -393,10 +396,10 @@ export class Commands {
 
         await ctx.reply(
           `✅ Group "<b>${groupName}</b>" found!\n\n` +
-          `Please provide your Gemini API key in the next message.\n\n` +
-          `<i>You can get your API key from:</i>\n` +
-          `https://makersuite.google.com/app/apikey\n\n` +
-          `<b>🔒 Security:</b> Your API key will be encrypted and only used for this group.`,
+            `Please provide your Gemini API key in the next message.\n\n` +
+            `<i>You can get your API key from:</i>\n` +
+            `https://makersuite.google.com/app/apikey\n\n` +
+            `<b>🔒 Security:</b> Your API key will be encrypted and only used for this group.`,
           { parse_mode: 'HTML' }
         );
         // Store temporary state for API key input
@@ -413,26 +416,26 @@ export class Commands {
         // Private group specific error
         await ctx.reply(
           '❌ <b>Could not access the private group.</b>\n\n' +
-          '<b>Please verify:</b>\n' +
-          '1. ✅ The bot is added to your private group\n' +
-          '2. ✅ You used the correct chat ID (negative number like <code>-123456789</code>)\n' +
-          '3. ✅ The bot has necessary permissions in the group\n\n' +
-          '<b>To get the chat ID:</b>\n' +
-          '1. Add @userinfobot to your group\n' +
-          '2. Forward any message from your group to @userinfobot\n' +
-          '3. Copy the chat ID it provides\n' +
-          '4. Make sure the bot is in the group before running /setup_group',
+            '<b>Please verify:</b>\n' +
+            '1. ✅ The bot is added to your private group\n' +
+            '2. ✅ You used the correct chat ID (negative number like <code>-123456789</code>)\n' +
+            '3. ✅ The bot has necessary permissions in the group\n\n' +
+            '<b>To get the chat ID:</b>\n' +
+            '1. Add @userinfobot to your group\n' +
+            '2. Forward any message from your group to @userinfobot\n' +
+            '3. Copy the chat ID it provides\n' +
+            '4. Make sure the bot is in the group before running /setup_group',
           { parse_mode: 'HTML' }
         );
       } else {
         // Public group specific error
         await ctx.reply(
           '❌ <b>Could not find the public group.</b>\n\n' +
-          '<b>Please verify:</b>\n' +
-          '1. ✅ The group has a public @username\n' +
-          '2. ✅ You spelled the username correctly (case-sensitive)\n' +
-          '3. ✅ The bot is added to the group\n\n' +
-          '<i>Example: /setup_group @mygroup</i>',
+            '<b>Please verify:</b>\n' +
+            '1. ✅ The group has a public @username\n' +
+            '2. ✅ You spelled the username correctly (case-sensitive)\n' +
+            '3. ✅ The bot is added to the group\n\n' +
+            '<i>Example: /setup_group @mygroup</i>',
           { parse_mode: 'HTML' }
         );
       }
@@ -447,16 +450,16 @@ export class Commands {
     await ctx.answerCallbackQuery();
     await ctx.reply(
       '📝 <b>Setup a Group</b>\n\n' +
-      '<b>✨ Easiest Method (Recommended):</b>\n' +
-      '1. Add the bot to your group\n' +
-      '2. Run <code>/setup</code> directly in the group\n' +
-      '3. Follow the prompts to provide your API key\n\n' +
-      '<b>Alternative Method:</b>\n' +
-      '<b>For public groups:</b>\n' +
-      '<code>/setup_group @your_group_username</code>\n\n' +
-      '<b>For private groups:</b>\n' +
-      '<code>/setup_group &lt;chat_id&gt;</code>\n' +
-      '(Get chat ID by forwarding a message to @userinfobot)',
+        '<b>✨ Easiest Method (Recommended):</b>\n' +
+        '1. Add the bot to your group\n' +
+        '2. Run <code>/setup</code> directly in the group\n' +
+        '3. Follow the prompts to provide your API key\n\n' +
+        '<b>Alternative Method:</b>\n' +
+        '<b>For public groups:</b>\n' +
+        '<code>/setup_group @your_group_username</code>\n\n' +
+        '<b>For private groups:</b>\n' +
+        '<code>/setup_group &lt;chat_id&gt;</code>\n' +
+        '(Get chat ID by forwarding a message to @userinfobot)',
       { parse_mode: 'HTML' }
     );
   }
@@ -489,29 +492,29 @@ export class Commands {
 
     await ctx.reply(
       'ℹ️ <b>TLDR Bot Help - Private Chat</b>\n\n' +
-      '<b>📋 Commands:</b>\n\n' +
-      '<b>/start</b> - Welcome message\n' +
-      '<i>Shows welcome screen and pending setups</i>\n\n' +
-      '<b>/setup_group @group</b> or <b>/setup_group &lt;chat_id&gt;</b>\n' +
-      '<i>Configure a group manually</i>\n' +
-      '<i>Example: /setup_group @mygroup or /setup_group -123456789</i>\n\n' +
-      '<b>/continue_setup</b>\n' +
-      '<i>Complete a pending group setup with API key</i>\n\n' +
-      '<b>/list_groups</b>\n' +
-      '<i>List all your configured groups</i>\n\n' +
-      '<b>/update_api_key &lt;chat_id&gt; [api_key]</b>\n' +
-      '<i>Update API key for a group</i>\n' +
-      '<i>Examples:</i>\n' +
-      '<code>/update_api_key -123456789</code> - Interactive mode\n' +
-      '<code>/update_api_key -123456789 AIza...</code> - Direct update\n\n' +
-      '<b>/remove_group &lt;chat_id&gt;</b>\n' +
-      '<i>Remove a group configuration</i>\n' +
-      '<i>Example: /remove_group -123456789</i>\n\n' +
-      '<b>💡 Tip:</b> Run /setup in your group for the easiest setup!\n\n' +
-      '<b>🔑 Get API Key:</b> https://makersuite.google.com/app/apikey',
+        '<b>📋 Commands:</b>\n\n' +
+        '<b>/start</b> - Welcome message\n' +
+        '<i>Shows welcome screen and pending setups</i>\n\n' +
+        '<b>/setup_group @group</b> or <b>/setup_group &lt;chat_id&gt;</b>\n' +
+        '<i>Configure a group manually</i>\n' +
+        '<i>Example: /setup_group @mygroup or /setup_group -123456789</i>\n\n' +
+        '<b>/continue_setup</b>\n' +
+        '<i>Complete a pending group setup with API key</i>\n\n' +
+        '<b>/list_groups</b>\n' +
+        '<i>List all your configured groups</i>\n\n' +
+        '<b>/update_api_key &lt;chat_id&gt; [api_key]</b>\n' +
+        '<i>Update API key for a group</i>\n' +
+        '<i>Examples:</i>\n' +
+        '<code>/update_api_key -123456789</code> - Interactive mode\n' +
+        '<code>/update_api_key -123456789 AIza...</code> - Direct update\n\n' +
+        '<b>/remove_group &lt;chat_id&gt;</b>\n' +
+        '<i>Remove a group configuration</i>\n' +
+        '<i>Example: /remove_group -123456789</i>\n\n' +
+        '<b>💡 Tip:</b> Run /setup in your group for the easiest setup!\n\n' +
+        '<b>🔑 Get API Key:</b> https://makersuite.google.com/app/apikey',
       {
         parse_mode: 'HTML',
-        reply_markup: keyboard
+        reply_markup: keyboard,
       }
     );
   }
@@ -519,43 +522,43 @@ export class Commands {
   private async handleGroupHelp(ctx: MyContext) {
     await ctx.reply(
       'ℹ️ <b>TLDR Bot Help - Group Chat</b>\n\n' +
-      '<b>📋 Commands:</b>\n\n' +
-      '<b>/setup</b>\n' +
-      '<i>Start group setup (admin only)</i>\n\n' +
-      '<b>/tldr [timeframe or count] [style]</b>\n' +
-      '<i>Get summary for a time period or message count</i>\n' +
-      '<i>Examples:</i>\n' +
-      '<code>/tldr</code> or <code>/tldr 1h</code> - Last hour\n' +
-      '<code>/tldr 6h</code> - Last 6 hours\n' +
-      '<code>/tldr 30h</code> - Last 30 hours\n' +
-      '<code>/tldr day</code> or <code>/tldr 1 day</code> or <code>/tldr 1d</code> - Last day\n' +
-      '<code>/tldr 2d</code> or <code>/tldr 2 days</code> - Last 2 days\n' +
-      '<code>/tldr 3d</code> or <code>/tldr 3 days</code> - Last 3 days\n' +
-      '<code>/tldr week</code> or <code>/tldr 1 week</code> - Last week\n' +
-      '<code>/tldr 300</code> - Last 300 messages\n\n' +
-      '<b>Style options:</b> Add style at the end (e.g., <code>/tldr 1h detailed</code>)\n' +
-      '• <code>default</code> - Balanced summary with bullet points\n' +
-      '• <code>detailed</code> - Comprehensive summary with all details\n' +
-      '• <code>brief</code> - Very concise, only key points\n' +
-      '• <code>bullet</code> - Organized as bullet list\n' +
-      '• <code>timeline</code> - Chronological order of events\n' +
-      '<i>If no style is specified, uses the group\'s default style set by admin.</i>\n\n' +
-      '<b>Reply to message + /tldr [style]</b>\n' +
-      '<i>Summarize from that message to now (optionally with style)</i>\n\n' +
-      '<b>/tldr_info</b>\n' +
-      '<i>Show group configuration and status</i>\n\n' +
-      '<b>/tldr_settings</b>\n' +
-      '<i>Manage summary settings (admin only)</i>\n' +
-      '<i>Customize style, filters, scheduling</i>\n\n' +
-      '<b>/schedule</b>\n' +
-      '<i>Set up automatic daily/weekly summaries (admin only)</i>\n\n' +
-      '<b>/filter</b>\n' +
-      '<i>Configure message filtering (admin only)</i>\n' +
-      '<i>Exclude bots, commands, or specific users</i>\n\n' +
-      '<b>/enable</b>\n' +
-      '<i>Enable TLDR bot for this group (admin only)</i>\n\n' +
-      '<b>/disable</b>\n' +
-      '<i>Disable TLDR bot for this group (admin only)</i>',
+        '<b>📋 Commands:</b>\n\n' +
+        '<b>/setup</b>\n' +
+        '<i>Start group setup (admin only)</i>\n\n' +
+        '<b>/tldr [timeframe or count] [style]</b>\n' +
+        '<i>Get summary for a time period or message count</i>\n' +
+        '<i>Examples:</i>\n' +
+        '<code>/tldr</code> or <code>/tldr 1h</code> - Last hour\n' +
+        '<code>/tldr 6h</code> - Last 6 hours\n' +
+        '<code>/tldr 30h</code> - Last 30 hours\n' +
+        '<code>/tldr day</code> or <code>/tldr 1 day</code> or <code>/tldr 1d</code> - Last day\n' +
+        '<code>/tldr 2d</code> or <code>/tldr 2 days</code> - Last 2 days\n' +
+        '<code>/tldr 3d</code> or <code>/tldr 3 days</code> - Last 3 days\n' +
+        '<code>/tldr week</code> or <code>/tldr 1 week</code> - Last week\n' +
+        '<code>/tldr 300</code> - Last 300 messages\n\n' +
+        '<b>Style options:</b> Add style at the end (e.g., <code>/tldr 1h detailed</code>)\n' +
+        '• <code>default</code> - Balanced summary with bullet points\n' +
+        '• <code>detailed</code> - Comprehensive summary with all details\n' +
+        '• <code>brief</code> - Very concise, only key points\n' +
+        '• <code>bullet</code> - Organized as bullet list\n' +
+        '• <code>timeline</code> - Chronological order of events\n' +
+        "<i>If no style is specified, uses the group's default style set by admin.</i>\n\n" +
+        '<b>Reply to message + /tldr [style]</b>\n' +
+        '<i>Summarize from that message to now (optionally with style)</i>\n\n' +
+        '<b>/tldr_info</b>\n' +
+        '<i>Show group configuration and status</i>\n\n' +
+        '<b>/tldr_settings</b>\n' +
+        '<i>Manage summary settings (admin only)</i>\n' +
+        '<i>Customize style, filters, scheduling</i>\n\n' +
+        '<b>/schedule</b>\n' +
+        '<i>Set up automatic daily/weekly summaries (admin only)</i>\n\n' +
+        '<b>/filter</b>\n' +
+        '<i>Configure message filtering (admin only)</i>\n' +
+        '<i>Exclude bots, commands, or specific users</i>\n\n' +
+        '<b>/enable</b>\n' +
+        '<i>Enable TLDR bot for this group (admin only)</i>\n\n' +
+        '<b>/disable</b>\n' +
+        '<i>Disable TLDR bot for this group (admin only)</i>',
       { parse_mode: 'HTML' }
     );
   }
@@ -582,16 +585,18 @@ export class Commands {
       const groups = await this.db.listGroupsForUser(chat.id);
 
       if (groups.length === 0) {
-        await ctx.reply('📭 You have not configured any groups yet.\n\nUse /setup_group to get started!');
+        await ctx.reply(
+          '📭 You have not configured any groups yet.\n\nUse /setup_group to get started!'
+        );
         return;
       }
 
       let message = '📋 <b>Your configured groups:</b>\n\n';
-      
+
       for (let idx = 0; idx < groups.length; idx++) {
         const group = groups[idx];
         const status = group.gemini_api_key_encrypted ? '✅ Configured' : '⏳ Pending setup';
-        
+
         // Try to get group name
         let groupName = `Group ${group.telegram_chat_id}`;
         try {
@@ -603,12 +608,12 @@ export class Commands {
           // Group might not exist or bot not in it anymore
           groupName = `Group ${group.telegram_chat_id}`;
         }
-        
+
         message += `${idx + 1}. <b>${groupName}</b>\n`;
         message += `   ID: <code>${group.telegram_chat_id}</code>\n`;
         message += `   Status: ${status}\n\n`;
       }
-      
+
       message += '<i>💡 Use the chat ID with /remove_group to remove a group</i>';
 
       await ctx.reply(message, { parse_mode: 'HTML' });
@@ -633,7 +638,7 @@ export class Commands {
       if (configuredGroups.length === 0) {
         await ctx.reply(
           '📭 You have no configured groups to update.\n\n' +
-          'Use /setup_group or /setup to configure a group first.'
+            'Use /setup_group or /setup to configure a group first.'
         );
         return;
       }
@@ -647,11 +652,11 @@ export class Commands {
         if (isNaN(chatId)) {
           await ctx.reply(
             '❌ Invalid group ID format.\n\n' +
-            'Usage: `/update_api_key <chat_id> [api_key]`\n\n' +
-            'Examples:\n' +
-            '• `/update_api_key -123456789` - Interactive mode\n' +
-            '• `/update_api_key -123456789 AIza...` - Direct update\n\n' +
-            'Run `/list_groups` to see your groups and their IDs.',
+              'Usage: `/update_api_key <chat_id> [api_key]`\n\n' +
+              'Examples:\n' +
+              '• `/update_api_key -123456789` - Interactive mode\n' +
+              '• `/update_api_key -123456789 AIza...` - Direct update\n\n' +
+              'Run `/list_groups` to see your groups and their IDs.',
             { parse_mode: 'HTML' }
           );
           return;
@@ -665,13 +670,12 @@ export class Commands {
           if (groupExists) {
             await ctx.reply(
               '❌ Group found but not configured with an API key.\n\n' +
-              'Please complete the setup first using /setup_group or /setup.',
+                'Please complete the setup first using /setup_group or /setup.',
               { parse_mode: 'HTML' }
             );
           } else {
             await ctx.reply(
-              '❌ Group not found.\n\n' +
-              'Run `/list_groups` to see your configured groups.',
+              '❌ Group not found.\n\n' + 'Run `/list_groups` to see your configured groups.',
               { parse_mode: 'HTML' }
             );
           }
@@ -685,16 +689,16 @@ export class Commands {
           if (!isAdmin) {
             await ctx.reply(
               '❌ You must be an admin of the group to update the API key.\n\n' +
-              'If you were removed as admin, please ask a current admin to update it.'
+                'If you were removed as admin, please ask a current admin to update it.'
             );
             return;
           }
         } catch (error) {
           await ctx.reply(
             '❌ Could not access the group. Please make sure:\n' +
-            '• The bot is still in the group\n' +
-            '• The group exists\n' +
-            '• You are still an admin'
+              '• The bot is still in the group\n' +
+              '• The group exists\n' +
+              '• You are still an admin'
           );
           return;
         }
@@ -703,7 +707,7 @@ export class Commands {
         if (args.length >= 3) {
           // Direct update mode - API key provided as argument
           const apiKey = args.slice(2).join(' ').trim();
-          
+
           // Import the validation function (we'll need to export it or move it)
           // For now, let's do the validation inline
           if (!GeminiService.validateApiKey(apiKey)) {
@@ -714,20 +718,38 @@ export class Commands {
           // Test and update the API key
           try {
             const gemini = new GeminiService(apiKey);
-            await gemini.summarizeMessages([{ content: 'test', timestamp: new Date().toISOString() }]);
-            
+            await gemini.summarizeMessages([
+              { content: 'test', timestamp: new Date().toISOString() },
+            ]);
+
             const encryptedKey = this.encryption.encrypt(apiKey);
             await this.db.updateGroupApiKey(chatId, encryptedKey);
-            
-            await ctx.reply('✅ API key updated successfully! The bot will now use the new key for summaries.');
+
+            await ctx.reply(
+              '✅ API key updated successfully! The bot will now use the new key for summaries.'
+            );
           } catch (error: any) {
             const errorMessage = error.message || 'Unknown error';
-            if (errorMessage.includes('Invalid API key') || errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('401')) {
-              await ctx.reply('❌ Invalid API key. Please check your key and try again.\n\n💡 Get a new key from: https://makersuite.google.com/app/apikey');
-            } else if (errorMessage.includes('quota') || errorMessage.includes('QUOTA_EXCEEDED') || errorMessage.includes('429')) {
-              await ctx.reply('❌ API quota exceeded. Please try again later or check your API usage.');
+            if (
+              errorMessage.includes('Invalid API key') ||
+              errorMessage.includes('API_KEY_INVALID') ||
+              errorMessage.includes('401')
+            ) {
+              await ctx.reply(
+                '❌ Invalid API key. Please check your key and try again.\n\n💡 Get a new key from: https://makersuite.google.com/app/apikey'
+              );
+            } else if (
+              errorMessage.includes('quota') ||
+              errorMessage.includes('QUOTA_EXCEEDED') ||
+              errorMessage.includes('429')
+            ) {
+              await ctx.reply(
+                '❌ API quota exceeded. Please try again later or check your API usage.'
+              );
             } else {
-              await ctx.reply(`❌ Failed to validate API key: ${errorMessage}. Please check your key and try again.`);
+              await ctx.reply(
+                `❌ Failed to validate API key: ${errorMessage}. Please check your key and try again.`
+              );
             }
           }
           return;
@@ -735,10 +757,10 @@ export class Commands {
 
         // Interactive mode - no API key provided, enter conversation
         setUpdateState(chat.id, chatId);
-        
+
         // Send prompt message before entering conversation
         await ctx.reply('Please paste your new Gemini API key:');
-        
+
         // Enter update conversation
         await ctx.conversation.enter('updateApiKey', { overwrite: true });
         return;
@@ -748,7 +770,7 @@ export class Commands {
       if (configuredGroups.length === 1) {
         // Only one configured group - start update directly
         const group = configuredGroups[0];
-        
+
         // Verify user is still admin
         try {
           const chatInfo = await ctx.api.getChat(group.telegram_chat_id);
@@ -756,7 +778,7 @@ export class Commands {
           if (!isAdmin) {
             await ctx.reply(
               '❌ You must be an admin of the group to update the API key.\n\n' +
-              'If you were removed as admin, please ask a current admin to update it.'
+                'If you were removed as admin, please ask a current admin to update it.'
             );
             return;
           }
@@ -768,17 +790,17 @@ export class Commands {
 
           await ctx.reply(
             `🔄 <b>Update API Key</b>\n\n` +
-            `Group: <b>${groupName}</b>\n` +
-            `ID: <code>${group.telegram_chat_id}</code>\n\n` +
-            `Please paste your new Gemini API key:`,
+              `Group: <b>${groupName}</b>\n` +
+              `ID: <code>${group.telegram_chat_id}</code>\n\n` +
+              `Please paste your new Gemini API key:`,
             {
-              parse_mode: 'HTML'
+              parse_mode: 'HTML',
             }
           );
 
           // Store the group ID for the conversation
           setUpdateState(chat.id, group.telegram_chat_id);
-          
+
           await ctx.conversation.enter('updateApiKey', { overwrite: true });
         } catch (error) {
           await ctx.reply(
@@ -790,11 +812,11 @@ export class Commands {
         const keyboard = new InlineKeyboard();
         let message = '🔄 <b>Update API Key</b>\n\n';
         message += 'Select a group to update:\n\n';
-        
+
         for (let idx = 0; idx < configuredGroups.length; idx++) {
           const group = configuredGroups[idx];
           let groupName = `Group ${group.telegram_chat_id}`;
-          
+
           try {
             const chatInfo = await ctx.api.getChat(group.telegram_chat_id);
             if ('title' in chatInfo && chatInfo.title) {
@@ -803,19 +825,22 @@ export class Commands {
           } catch (error) {
             // Group might not exist or bot not in it
           }
-          
+
           message += `${idx + 1}. <b>${groupName}</b>\n`;
           message += `   ID: <code>${group.telegram_chat_id}</code>\n\n`;
-          
-          keyboard.text(`${idx + 1}. ${groupName.substring(0, 30)}`, `update_key_${group.telegram_chat_id}`);
+
+          keyboard.text(
+            `${idx + 1}. ${groupName.substring(0, 30)}`,
+            `update_key_${group.telegram_chat_id}`
+          );
           if ((idx + 1) % 2 === 0 || idx === configuredGroups.length - 1) {
             keyboard.row();
           }
         }
 
-        await ctx.reply(message, { 
+        await ctx.reply(message, {
           parse_mode: 'HTML',
-          reply_markup: keyboard
+          reply_markup: keyboard,
         });
       }
     } catch (error) {
@@ -849,9 +874,9 @@ export class Commands {
         if (isNaN(chatId)) {
           await ctx.reply(
             '❌ Invalid group ID format.\n\n' +
-            'Usage: `/remove_group <chat_id>`\n\n' +
-            'Example: `/remove_group -123456789`\n\n' +
-            'Run `/list_groups` to see your groups and their IDs.',
+              'Usage: `/remove_group <chat_id>`\n\n' +
+              'Example: `/remove_group -123456789`\n\n' +
+              'Run `/list_groups` to see your groups and their IDs.',
             { parse_mode: 'HTML' }
           );
           return;
@@ -861,8 +886,8 @@ export class Commands {
         const group = groups.find(g => g.telegram_chat_id === chatId);
         if (!group) {
           await ctx.reply(
-            '❌ Group not found or you don\'t have permission to remove it.\n\n' +
-            'Run `/list_groups` to see your groups.',
+            "❌ Group not found or you don't have permission to remove it.\n\n" +
+              'Run `/list_groups` to see your groups.',
             { parse_mode: 'HTML' }
           );
           return;
@@ -875,7 +900,7 @@ export class Commands {
           if (!isAdmin) {
             await ctx.reply(
               '❌ You must be an admin of the group to remove it.\n\n' +
-              'If you were removed as admin, contact a current admin to remove the bot.'
+                'If you were removed as admin, contact a current admin to remove the bot.'
             );
             return;
           }
@@ -890,8 +915,8 @@ export class Commands {
         if (deleted) {
           await ctx.reply(
             `✅ Group removed successfully!\n\n` +
-            `All cached messages for this group have been deleted.\n\n` +
-            `To set it up again, run /setup in the group or /setup_group in private chat.`
+              `All cached messages for this group have been deleted.\n\n` +
+              `To set it up again, run /setup in the group or /setup_group in private chat.`
           );
         } else {
           await ctx.reply('❌ Group not found in database.');
@@ -909,13 +934,13 @@ export class Commands {
 
         await ctx.reply(
           `🗑️ <b>Remove Group</b>\n\n` +
-          `Group ID: <code>${group.telegram_chat_id}</code>\n` +
-          `Status: ${group.gemini_api_key_encrypted ? '✅ Configured' : '⏳ Pending setup'}\n\n` +
-          `Are you sure you want to remove this group? This will delete all cached messages.\n\n` +
-          `<i>Or use: /remove_group ${group.telegram_chat_id}</i>`,
+            `Group ID: <code>${group.telegram_chat_id}</code>\n` +
+            `Status: ${group.gemini_api_key_encrypted ? '✅ Configured' : '⏳ Pending setup'}\n\n` +
+            `Are you sure you want to remove this group? This will delete all cached messages.\n\n` +
+            `<i>Or use: /remove_group ${group.telegram_chat_id}</i>`,
           {
             parse_mode: 'HTML',
-            reply_markup: keyboard
+            reply_markup: keyboard,
           }
         );
       } else {
@@ -923,34 +948,40 @@ export class Commands {
         const keyboard = new InlineKeyboard();
         let message = '🗑️ <b>Remove Group</b>\n\n';
         message += 'Select a group to remove:\n\n';
-        
+
         groups.forEach((group, idx) => {
           const status = group.gemini_api_key_encrypted ? '✅ Configured' : '⏳ Pending';
           let groupName = `Group ${group.telegram_chat_id}`;
-          
+
           try {
             // Try to get group name (will be async, but we'll handle it)
-            ctx.api.getChat(group.telegram_chat_id).then(chatInfo => {
-              if ('title' in chatInfo && chatInfo.title) {
-                groupName = chatInfo.title;
-              }
-            }).catch(() => {});
+            ctx.api
+              .getChat(group.telegram_chat_id)
+              .then(chatInfo => {
+                if ('title' in chatInfo && chatInfo.title) {
+                  groupName = chatInfo.title;
+                }
+              })
+              .catch(() => {});
           } catch (error) {
             // Ignore
           }
-          
+
           message += `${idx + 1}. <b>${groupName}</b>\n`;
           message += `   ID: <code>${group.telegram_chat_id}</code> ${status}\n\n`;
-          
-          keyboard.text(`🗑️ ${groupName.substring(0, 25)}`, `remove_group_${group.telegram_chat_id}`);
+
+          keyboard.text(
+            `🗑️ ${groupName.substring(0, 25)}`,
+            `remove_group_${group.telegram_chat_id}`
+          );
           if ((idx + 1) % 2 === 0 || idx === groups.length - 1) {
             keyboard.row();
           }
         });
 
-        await ctx.reply(message, { 
+        await ctx.reply(message, {
           parse_mode: 'HTML',
-          reply_markup: keyboard
+          reply_markup: keyboard,
         });
       }
     } catch (error) {
@@ -961,12 +992,12 @@ export class Commands {
 
   private async handleRemoveGroupButton(ctx: MyContext) {
     await ctx.answerCallbackQuery();
-    
+
     if (!ctx.callbackQuery || !ctx.callbackQuery.data) {
       await ctx.editMessageText('❌ Invalid callback data.');
       return;
     }
-    
+
     const match = ctx.callbackQuery.data.match(/^remove_group_(-?\d+)$/);
     if (!match) {
       await ctx.editMessageText('❌ Invalid group ID.');
@@ -975,7 +1006,7 @@ export class Commands {
 
     const chatId = parseInt(match[1], 10);
     const chat = ctx.chat;
-    
+
     if (!chat || chat.type !== 'private') {
       await ctx.editMessageText('❌ This can only be used in private chat.');
       return;
@@ -985,11 +1016,9 @@ export class Commands {
       // Verify the group belongs to this user
       const groups = await this.db.listGroupsForUser(chat.id);
       const group = groups.find(g => g.telegram_chat_id === chatId);
-      
+
       if (!group) {
-        await ctx.editMessageText(
-          '❌ Group not found or you don\'t have permission to remove it.'
-        );
+        await ctx.editMessageText("❌ Group not found or you don't have permission to remove it.");
         return;
       }
 
@@ -1000,7 +1029,7 @@ export class Commands {
         if (!isAdmin) {
           await ctx.editMessageText(
             '❌ You must be an admin of the group to remove it.\n\n' +
-            'If you were removed as admin, contact a current admin to remove the bot.'
+              'If you were removed as admin, contact a current admin to remove the bot.'
           );
           return;
         }
@@ -1015,8 +1044,8 @@ export class Commands {
       if (deleted) {
         await ctx.editMessageText(
           `✅ Group removed successfully!\n\n` +
-          `All cached messages for this group have been deleted.\n\n` +
-          `To set it up again, run /setup in the group or /setup_group in private chat.`
+            `All cached messages for this group have been deleted.\n\n` +
+            `To set it up again, run /setup in the group or /setup_group in private chat.`
         );
       } else {
         await ctx.editMessageText('❌ Group not found in database.');
@@ -1043,8 +1072,10 @@ export class Commands {
       const lastCommandTime = this.rateLimitMap.get(rateLimitKey);
       const now = Date.now();
 
-      if (lastCommandTime && (now - lastCommandTime) < this.RATE_LIMIT_SECONDS * 1000) {
-        const remainingSeconds = Math.ceil((this.RATE_LIMIT_SECONDS * 1000 - (now - lastCommandTime)) / 1000);
+      if (lastCommandTime && now - lastCommandTime < this.RATE_LIMIT_SECONDS * 1000) {
+        const remainingSeconds = Math.ceil(
+          (this.RATE_LIMIT_SECONDS * 1000 - (now - lastCommandTime)) / 1000
+        );
         await ctx.reply(
           `⏳ Please wait ${remainingSeconds} second${remainingSeconds !== 1 ? 's' : ''} before requesting another summary.`
         );
@@ -1060,7 +1091,7 @@ export class Commands {
       if (!group || !group.gemini_api_key_encrypted) {
         await ctx.reply(
           '❌ This group is not configured yet.\n\n' +
-          'Ask an admin to set it up in private chat using /setup_group.'
+            'Ask an admin to set it up in private chat using /setup_group.'
         );
         return;
       }
@@ -1081,13 +1112,13 @@ export class Commands {
       const args = ctx.message?.text?.split(' ') || [];
       // Parse arguments to extract timeframe/count and optional style preference
       const parsedArgs = this.parseTLDRArgs(args.slice(1));
-      
+
       loadingMsg = await ctx.reply('⏳ Generating summary...');
 
       // Check if input is a count (pure number) or time-based (has h/d suffix or keywords)
       let messages: any[];
       let summaryLabel: string;
-      
+
       if (this.isCountBased(parsedArgs.input)) {
         // Count-based: Get last N messages
         const count = this.parseCount(parsedArgs.input);
@@ -1100,7 +1131,7 @@ export class Commands {
         messages = await this.db.getMessagesSinceTimestamp(chat.id, since, 10000);
       }
       if (messages.length === 0) {
-        const errorMsg = this.isCountBased(parsedArgs.input) 
+        const errorMsg = this.isCountBased(parsedArgs.input)
           ? '📭 No messages found in the database.'
           : '📭 No messages found in the specified time range.';
         await ctx.api.editMessageText(chat.id, loadingMsg.message_id, errorMsg);
@@ -1118,7 +1149,7 @@ export class Commands {
 
       // Get group settings for customization
       const settings = await this.db.getGroupSettings(chat.id);
-      
+
       // Filter messages based on settings
       const filteredMessages = this.filterMessages(messages, settings, ctx);
 
@@ -1138,12 +1169,12 @@ export class Commands {
       const gemini = new GeminiService(decryptedKey);
       const summary = await gemini.summarizeMessages(filteredMessages, {
         customPrompt: settings.custom_prompt,
-        summaryStyle: summaryStyle
+        summaryStyle: summaryStyle,
       });
 
       // Convert markdown to HTML
       const formattedSummary = this.markdownToHtml(summary);
-      
+
       // Send summary, splitting into multiple messages if too long
       await this.sendSummaryMessage(
         ctx,
@@ -1158,16 +1189,19 @@ export class Commands {
 
       // Provide specific error message
       const errorMessage = error.message || 'Unknown error occurred';
-      const userFriendlyMessage = errorMessage.includes('Invalid API key') || errorMessage.includes('API key')
-        ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> An admin can update the API key using /update_api_key in private chat.`
-        : errorMessage.includes('quota') || errorMessage.includes('rate limit')
-        ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> Please wait a moment and try again, or check your Gemini API quota.`
-        : `❌ ${errorMessage}`;
+      const userFriendlyMessage =
+        errorMessage.includes('Invalid API key') || errorMessage.includes('API key')
+          ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> An admin can update the API key using /update_api_key in private chat.`
+          : errorMessage.includes('quota') || errorMessage.includes('rate limit')
+            ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> Please wait a moment and try again, or check your Gemini API quota.`
+            : `❌ ${errorMessage}`;
 
       // Try to edit the loading message to show error
       try {
         if (loadingMsg) {
-          await ctx.api.editMessageText(chat.id, loadingMsg.message_id, userFriendlyMessage, { parse_mode: 'HTML' });
+          await ctx.api.editMessageText(chat.id, loadingMsg.message_id, userFriendlyMessage, {
+            parse_mode: 'HTML',
+          });
         } else {
           await ctx.reply(userFriendlyMessage, { parse_mode: 'HTML' });
         }
@@ -1189,8 +1223,10 @@ export class Commands {
       const lastCommandTime = this.rateLimitMap.get(rateLimitKey);
       const now = Date.now();
 
-      if (lastCommandTime && (now - lastCommandTime) < this.RATE_LIMIT_SECONDS * 1000) {
-        const remainingSeconds = Math.ceil((this.RATE_LIMIT_SECONDS * 1000 - (now - lastCommandTime)) / 1000);
+      if (lastCommandTime && now - lastCommandTime < this.RATE_LIMIT_SECONDS * 1000) {
+        const remainingSeconds = Math.ceil(
+          (this.RATE_LIMIT_SECONDS * 1000 - (now - lastCommandTime)) / 1000
+        );
         await ctx.reply(
           `⏳ Please wait ${remainingSeconds} second${remainingSeconds !== 1 ? 's' : ''} before requesting another summary.`
         );
@@ -1211,7 +1247,11 @@ export class Commands {
 
       const messages = await this.db.getMessagesSinceMessageId(chat.id, fromMessageId, 10000);
       if (messages.length === 0) {
-        await ctx.api.editMessageText(chat.id, loadingMsg.message_id, '📭 No messages found from this point.');
+        await ctx.api.editMessageText(
+          chat.id,
+          loadingMsg.message_id,
+          '📭 No messages found from this point.'
+        );
         return;
       }
 
@@ -1226,7 +1266,7 @@ export class Commands {
 
       // Get group settings for customization
       const settings = await this.db.getGroupSettings(chat.id);
-      
+
       // Filter messages based on settings
       const filteredMessages = this.filterMessages(messages, settings, ctx);
 
@@ -1245,7 +1285,7 @@ export class Commands {
       const gemini = new GeminiService(decryptedKey);
       const summary = await gemini.summarizeMessages(filteredMessages, {
         customPrompt: settings.custom_prompt,
-        summaryStyle: summaryStyle
+        summaryStyle: summaryStyle,
       });
 
       // Convert markdown to HTML
@@ -1265,15 +1305,18 @@ export class Commands {
 
       // Provide specific error message
       const errorMessage = error.message || 'Unknown error occurred';
-      const userFriendlyMessage = errorMessage.includes('Invalid API key') || errorMessage.includes('API key')
-        ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> An admin can update the API key using /update_api_key in private chat.`
-        : errorMessage.includes('quota') || errorMessage.includes('rate limit')
-        ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> Please wait a moment and try again, or check your Gemini API quota.`
-        : `❌ ${errorMessage}`;
+      const userFriendlyMessage =
+        errorMessage.includes('Invalid API key') || errorMessage.includes('API key')
+          ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> An admin can update the API key using /update_api_key in private chat.`
+          : errorMessage.includes('quota') || errorMessage.includes('rate limit')
+            ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> Please wait a moment and try again, or check your Gemini API quota.`
+            : `❌ ${errorMessage}`;
 
       try {
         if (loadingMsg) {
-          await ctx.api.editMessageText(chat.id, loadingMsg.message_id, userFriendlyMessage, { parse_mode: 'HTML' });
+          await ctx.api.editMessageText(chat.id, loadingMsg.message_id, userFriendlyMessage, {
+            parse_mode: 'HTML',
+          });
         } else {
           await ctx.reply(userFriendlyMessage, { parse_mode: 'HTML' });
         }
@@ -1304,10 +1347,10 @@ export class Commands {
 
       await ctx.reply(
         `ℹ️ <b>TLDR Info</b>\n\n` +
-        `Status: ${status}\n` +
-        `Bot: ${enabledStatus}\n\n` +
-        `🔒 Messages auto-delete after 48 hours\n\n` +
-        `<i>Use /tldr [timeframe] or reply to a message with /tldr</i>`,
+          `Status: ${status}\n` +
+          `Bot: ${enabledStatus}\n\n` +
+          `🔒 Messages auto-delete after 48 hours\n\n` +
+          `<i>Use /tldr [timeframe] or reply to a message with /tldr</i>`,
         { parse_mode: 'HTML' }
       );
     } catch (error) {
@@ -1357,7 +1400,11 @@ export class Commands {
       }
 
       // Check if user is in excluded list
-      if (ctx.from?.id && settings.excluded_user_ids && settings.excluded_user_ids.includes(ctx.from.id)) {
+      if (
+        ctx.from?.id &&
+        settings.excluded_user_ids &&
+        settings.excluded_user_ids.includes(ctx.from.id)
+      ) {
         return;
       }
     } catch (error) {
@@ -1398,7 +1445,11 @@ export class Commands {
       }
 
       // Exclude specific user IDs
-      if (settings.excluded_user_ids && msg.user_id && settings.excluded_user_ids.includes(msg.user_id)) {
+      if (
+        settings.excluded_user_ids &&
+        msg.user_id &&
+        settings.excluded_user_ids.includes(msg.user_id)
+      ) {
         return false;
       }
 
@@ -1408,12 +1459,12 @@ export class Commands {
 
   private async handleUpdateApiKeyButton(ctx: MyContext) {
     await ctx.answerCallbackQuery();
-    
+
     if (!ctx.callbackQuery || !ctx.callbackQuery.data) {
       await ctx.editMessageText('❌ Invalid callback data.');
       return;
     }
-    
+
     const match = ctx.callbackQuery.data.match(/^update_key_(-?\d+)$/);
     if (!match) {
       await ctx.editMessageText('❌ Invalid group ID.');
@@ -1422,7 +1473,7 @@ export class Commands {
 
     const chatId = parseInt(match[1], 10);
     const chat = ctx.chat;
-    
+
     if (!chat || chat.type !== 'private') {
       await ctx.editMessageText('❌ This can only be used in private chat.');
       return;
@@ -1440,27 +1491,32 @@ export class Commands {
       if (!groupFromDb) {
         await ctx.editMessageText(
           '❌ Group not found in database.\n\n' +
-          'The group may not be set up yet. Run /setup in the group or /setup_group in private chat.'
+            'The group may not be set up yet. Run /setup in the group or /setup_group in private chat.'
         );
         return;
       }
 
       // Verify the group belongs to this user
       // Compare as numbers to avoid type mismatch issues
-      const setupUserId = groupFromDb.setup_by_user_id ? Number(groupFromDb.setup_by_user_id) : null;
+      const setupUserId = groupFromDb.setup_by_user_id
+        ? Number(groupFromDb.setup_by_user_id)
+        : null;
       if (setupUserId !== userId) {
         await ctx.editMessageText(
           '❌ You are not authorized to update this group.\n\n' +
-          'Only the user who set up the group can update its API key.'
+            'Only the user who set up the group can update its API key.'
         );
         return;
       }
 
       // Verify the group has an API key configured
-      if (!groupFromDb.gemini_api_key_encrypted || groupFromDb.gemini_api_key_encrypted.trim().length === 0) {
+      if (
+        !groupFromDb.gemini_api_key_encrypted ||
+        groupFromDb.gemini_api_key_encrypted.trim().length === 0
+      ) {
         await ctx.editMessageText(
           '❌ Group found but not configured with an API key.\n\n' +
-          'Please complete the setup first using /setup_group or /setup.'
+            'Please complete the setup first using /setup_group or /setup.'
         );
         return;
       }
@@ -1470,9 +1526,7 @@ export class Commands {
         const chatInfo = await ctx.api.getChat(chatId);
         const isAdmin = await this.isAdminOrCreator(ctx, chatId, chat.id);
         if (!isAdmin) {
-          await ctx.editMessageText(
-            '❌ You must be an admin of the group to update the API key.'
-          );
+          await ctx.editMessageText('❌ You must be an admin of the group to update the API key.');
           return;
         }
       } catch (error) {
@@ -1484,13 +1538,12 @@ export class Commands {
 
       // Store the group ID for the conversation
       setUpdateState(chat.id, chatId);
-      
+
       await ctx.editMessageText(
-        `🔄 <b>Update API Key</b>\n\n` +
-        `Please paste your new Gemini API key:`,
+        `🔄 <b>Update API Key</b>\n\n` + `Please paste your new Gemini API key:`,
         { parse_mode: 'HTML' }
       );
-      
+
       await ctx.conversation.enter('updateApiKey', { overwrite: true });
     } catch (error) {
       console.error('Error updating API key via button:', error);
@@ -1531,17 +1584,17 @@ export class Commands {
 
       await ctx.reply(
         '⚙️ <b>TLDR Settings</b>\n\n' +
-        'Customize how summaries are generated:\n\n' +
-        '<b>Current Settings:</b>\n' +
-        `Style: <code>${settings.summary_style || 'default'}</code>\n` +
-        `Custom Prompt: ${settings.custom_prompt ? '✅ Set' : '❌ Not set'}\n` +
-        `Exclude Bot Messages: ${settings.exclude_bot_messages ? '✅' : '❌'}\n` +
-        `Exclude Commands: ${settings.exclude_commands ? '✅' : '❌'}\n` +
-        `Scheduled: ${settings.scheduled_enabled ? '✅ ' + settings.schedule_frequency : '❌'}\n\n` +
-        'Select an option to configure:',
+          'Customize how summaries are generated:\n\n' +
+          '<b>Current Settings:</b>\n' +
+          `Style: <code>${settings.summary_style || 'default'}</code>\n` +
+          `Custom Prompt: ${settings.custom_prompt ? '✅ Set' : '❌ Not set'}\n` +
+          `Exclude Bot Messages: ${settings.exclude_bot_messages ? '✅' : '❌'}\n` +
+          `Exclude Commands: ${settings.exclude_commands ? '✅' : '❌'}\n` +
+          `Scheduled: ${settings.scheduled_enabled ? '✅ ' + settings.schedule_frequency : '❌'}\n\n` +
+          'Select an option to configure:',
         {
           parse_mode: 'HTML',
-          reply_markup: keyboard
+          reply_markup: keyboard,
         }
       );
     } catch (error) {
@@ -1581,13 +1634,13 @@ export class Commands {
 
       await ctx.reply(
         '⏰ <b>Scheduled Summaries</b>\n\n' +
-        `Status: ${settings.scheduled_enabled ? '✅ Enabled' : '❌ Disabled'}\n` +
-        `Frequency: ${settings.schedule_frequency || 'daily'}\n` +
-        `Time: ${settings.schedule_time || '09:00'} UTC\n\n` +
-        'Configure automatic summaries:',
+          `Status: ${settings.scheduled_enabled ? '✅ Enabled' : '❌ Disabled'}\n` +
+          `Frequency: ${settings.schedule_frequency || 'daily'}\n` +
+          `Time: ${settings.schedule_time || '09:00'} UTC\n\n` +
+          'Configure automatic summaries:',
         {
           parse_mode: 'HTML',
-          reply_markup: keyboard
+          reply_markup: keyboard,
         }
       );
     } catch (error) {
@@ -1618,7 +1671,10 @@ export class Commands {
     try {
       const settings = await this.db.getGroupSettings(chat.id);
       const keyboard = new InlineKeyboard()
-        .text(`Bot Messages: ${settings.exclude_bot_messages ? '✅' : '❌'}`, `filter_bot_${chat.id}`)
+        .text(
+          `Bot Messages: ${settings.exclude_bot_messages ? '✅' : '❌'}`,
+          `filter_bot_${chat.id}`
+        )
         .text(`Commands: ${settings.exclude_commands ? '✅' : '❌'}`, `filter_cmd_${chat.id}`)
         .row()
         .text('👤 Exclude Users', `filter_users_${chat.id}`)
@@ -1626,7 +1682,7 @@ export class Commands {
         .text('↩️ Back', 'settings_back');
 
       const excludedCount = settings.excluded_user_ids?.length || 0;
-      
+
       // Get usernames for excluded users
       let excludedUsersList = '';
       if (excludedCount > 0 && settings.excluded_user_ids) {
@@ -1638,24 +1694,24 @@ export class Commands {
            ORDER BY username, first_name`,
           [chat.id, settings.excluded_user_ids]
         );
-        
-        const userList = userMessages.rows.map((u: any) => 
-          u.username ? `@${u.username}` : (u.first_name || `ID:${u.user_id}`)
+
+        const userList = userMessages.rows.map((u: any) =>
+          u.username ? `@${u.username}` : u.first_name || `ID:${u.user_id}`
         );
         excludedUsersList = `\n<b>Excluded:</b> ${userList.join(', ')}`;
       }
 
       await ctx.reply(
         '🚫 <b>Message Filtering</b>\n\n' +
-        'Configure which messages to exclude from summaries:\n\n' +
-        `<b>Current Filters:</b>\n` +
-        `Bot Messages: ${settings.exclude_bot_messages ? '✅ Excluded' : '❌ Included'}\n` +
-        `Commands: ${settings.exclude_commands ? '✅ Excluded' : '❌ Included'}\n` +
-        `Excluded Users: ${excludedCount} user${excludedCount !== 1 ? 's' : ''}${excludedUsersList}\n\n` +
-        'Tap to toggle:',
+          'Configure which messages to exclude from summaries:\n\n' +
+          `<b>Current Filters:</b>\n` +
+          `Bot Messages: ${settings.exclude_bot_messages ? '✅ Excluded' : '❌ Included'}\n` +
+          `Commands: ${settings.exclude_commands ? '✅ Excluded' : '❌ Included'}\n` +
+          `Excluded Users: ${excludedCount} user${excludedCount !== 1 ? 's' : ''}${excludedUsersList}\n\n` +
+          'Tap to toggle:',
         {
           parse_mode: 'HTML',
-          reply_markup: keyboard
+          reply_markup: keyboard,
         }
       );
     } catch (error) {
@@ -1682,15 +1738,15 @@ export class Commands {
 
     await ctx.editMessageText(
       '📝 <b>Summary Style</b>\n\n' +
-      'Choose how summaries are formatted:\n\n' +
-      '<b>Default:</b> Balanced summary with bullet points\n' +
-      '<b>Detailed:</b> Comprehensive summary with all details\n' +
-      '<b>Brief:</b> Very concise, only key points\n' +
-      '<b>Bullet Points:</b> Organized as bullet list\n' +
-      '<b>Timeline:</b> Chronological order of events',
+        'Choose how summaries are formatted:\n\n' +
+        '<b>Default:</b> Balanced summary with bullet points\n' +
+        '<b>Detailed:</b> Comprehensive summary with all details\n' +
+        '<b>Brief:</b> Very concise, only key points\n' +
+        '<b>Bullet Points:</b> Organized as bullet list\n' +
+        '<b>Timeline:</b> Chronological order of events',
       {
         parse_mode: 'HTML',
-        reply_markup: keyboard
+        reply_markup: keyboard,
       }
     );
   }
@@ -1699,10 +1755,10 @@ export class Commands {
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(
       '🔧 <b>Custom Prompt</b>\n\n' +
-      'Send your custom prompt. Use <code>{{messages}}</code> as a placeholder for messages.\n\n' +
-      'Example:\n' +
-      '<code>Summarize these messages in 3 bullet points:\n{{messages}}</code>\n\n' +
-      'Send /cancel to go back.',
+        'Send your custom prompt. Use <code>{{messages}}</code> as a placeholder for messages.\n\n' +
+        'Example:\n' +
+        '<code>Summarize these messages in 3 bullet points:\n{{messages}}</code>\n\n' +
+        'Send /cancel to go back.',
       { parse_mode: 'HTML' }
     );
     // TODO: Add conversation handler for custom prompt
@@ -1722,19 +1778,19 @@ export class Commands {
       const settings = await this.db.getGroupSettings(chat.id);
       await ctx.editMessageText(
         '📊 <b>Current Settings</b>\n\n' +
-        `<b>Summary Style:</b> ${settings.summary_style || 'default'}\n` +
-        `<b>Custom Prompt:</b> ${settings.custom_prompt ? '✅ Set' : '❌ Not set'}\n\n` +
-        `<b>Filters:</b>\n` +
-        `Bot Messages: ${settings.exclude_bot_messages ? '❌ Excluded' : '✅ Included'}\n` +
-        `Commands: ${settings.exclude_commands ? '❌ Excluded' : '✅ Included'}\n` +
-        `Excluded Users: ${settings.excluded_user_ids?.length || 0}\n\n` +
-        `<b>Scheduling:</b>\n` +
-        `Enabled: ${settings.scheduled_enabled ? '✅' : '❌'}\n` +
-        `Frequency: ${settings.schedule_frequency || 'daily'}\n` +
-        `Time: ${settings.schedule_time || '09:00'} UTC`,
+          `<b>Summary Style:</b> ${settings.summary_style || 'default'}\n` +
+          `<b>Custom Prompt:</b> ${settings.custom_prompt ? '✅ Set' : '❌ Not set'}\n\n` +
+          `<b>Filters:</b>\n` +
+          `Bot Messages: ${settings.exclude_bot_messages ? '❌ Excluded' : '✅ Included'}\n` +
+          `Commands: ${settings.exclude_commands ? '❌ Excluded' : '✅ Included'}\n` +
+          `Excluded Users: ${settings.excluded_user_ids?.length || 0}\n\n` +
+          `<b>Scheduling:</b>\n` +
+          `Enabled: ${settings.scheduled_enabled ? '✅' : '❌'}\n` +
+          `Frequency: ${settings.schedule_frequency || 'daily'}\n` +
+          `Time: ${settings.schedule_time || '09:00'} UTC`,
         {
           parse_mode: 'HTML',
-          reply_markup: new InlineKeyboard().text('↩️ Back', 'settings_back')
+          reply_markup: new InlineKeyboard().text('↩️ Back', 'settings_back'),
         }
       );
     } catch (error) {
@@ -1752,11 +1808,11 @@ export class Commands {
     const match = ctx.callbackQuery?.data?.match(/^schedule_toggle_(-?\d+)$/);
     if (!match) return;
     const chatId = parseInt(match[1], 10);
-    
+
     try {
       const settings = await this.db.getGroupSettings(chatId);
       await this.db.updateGroupSettings(chatId, {
-        scheduledEnabled: !settings.scheduled_enabled
+        scheduledEnabled: !settings.scheduled_enabled,
       });
       await this.handleSchedule(ctx);
     } catch (error) {
@@ -1770,10 +1826,10 @@ export class Commands {
     if (!match) return;
     const frequency = match[1];
     const chatId = parseInt(match[2], 10);
-    
+
     try {
       await this.db.updateGroupSettings(chatId, {
-        scheduleFrequency: frequency
+        scheduleFrequency: frequency,
       });
       await this.handleSchedule(ctx);
     } catch (error) {
@@ -1786,11 +1842,11 @@ export class Commands {
     const match = ctx.callbackQuery?.data?.match(/^filter_bot_(-?\d+)$/);
     if (!match) return;
     const chatId = parseInt(match[1], 10);
-    
+
     try {
       const settings = await this.db.getGroupSettings(chatId);
       await this.db.updateGroupSettings(chatId, {
-        excludeBotMessages: !settings.exclude_bot_messages
+        excludeBotMessages: !settings.exclude_bot_messages,
       });
       await this.handleFilter(ctx);
     } catch (error) {
@@ -1803,11 +1859,11 @@ export class Commands {
     const match = ctx.callbackQuery?.data?.match(/^filter_cmd_(-?\d+)$/);
     if (!match) return;
     const chatId = parseInt(match[1], 10);
-    
+
     try {
       const settings = await this.db.getGroupSettings(chatId);
       await this.db.updateGroupSettings(chatId, {
-        excludeCommands: !settings.exclude_commands
+        excludeCommands: !settings.exclude_commands,
       });
       await this.handleFilter(ctx);
     } catch (error) {
@@ -1835,28 +1891,30 @@ export class Commands {
 
   // Add style button handlers
   private setupStyleHandlers() {
-    this.bot.callbackQuery(/^style_(default|detailed|brief|bullet|timeline)_(-?\d+)$/, async (ctx: MyContext) => {
-      await ctx.answerCallbackQuery();
-      const match = ctx.callbackQuery?.data?.match(/^style_(default|detailed|brief|bullet|timeline)_(-?\d+)$/);
-      if (!match) return;
-      const style = match[1];
-      const chatId = parseInt(match[2], 10);
-      
-      try {
-        await this.db.updateGroupSettings(chatId, {
-          summaryStyle: style
-        });
-        await ctx.editMessageText(
-          `✅ Summary style updated to: <b>${style}</b>`,
-          {
-            parse_mode: 'HTML',
-            reply_markup: new InlineKeyboard().text('↩️ Back', 'settings_back')
-          }
+    this.bot.callbackQuery(
+      /^style_(default|detailed|brief|bullet|timeline)_(-?\d+)$/,
+      async (ctx: MyContext) => {
+        await ctx.answerCallbackQuery();
+        const match = ctx.callbackQuery?.data?.match(
+          /^style_(default|detailed|brief|bullet|timeline)_(-?\d+)$/
         );
-      } catch (error) {
-        await ctx.editMessageText('❌ Error updating style');
+        if (!match) return;
+        const style = match[1];
+        const chatId = parseInt(match[2], 10);
+
+        try {
+          await this.db.updateGroupSettings(chatId, {
+            summaryStyle: style,
+          });
+          await ctx.editMessageText(`✅ Summary style updated to: <b>${style}</b>`, {
+            parse_mode: 'HTML',
+            reply_markup: new InlineKeyboard().text('↩️ Back', 'settings_back'),
+          });
+        } catch (error) {
+          await ctx.editMessageText('❌ Error updating style');
+        }
       }
-    });
+    );
   }
 
   private async handleEnable(ctx: MyContext) {
@@ -1886,7 +1944,9 @@ export class Commands {
       }
 
       await this.db.toggleGroupEnabled(chat.id, true);
-      await ctx.reply('✅ TLDR bot has been enabled for this group. You can now use /tldr commands.');
+      await ctx.reply(
+        '✅ TLDR bot has been enabled for this group. You can now use /tldr commands.'
+      );
     } catch (error) {
       console.error('Error enabling bot:', error);
       await ctx.reply('❌ Error enabling bot. Please try again.');
@@ -1920,7 +1980,9 @@ export class Commands {
       }
 
       await this.db.toggleGroupEnabled(chat.id, false);
-      await ctx.reply('⏸️ TLDR bot has been disabled for this group. /tldr commands will not work until re-enabled.');
+      await ctx.reply(
+        '⏸️ TLDR bot has been disabled for this group. /tldr commands will not work until re-enabled.'
+      );
     } catch (error) {
       console.error('Error disabling bot:', error);
       await ctx.reply('❌ Error disabling bot. Please try again.');
@@ -1934,23 +1996,25 @@ export class Commands {
    */
   private markdownToHtml(text: string): string {
     if (!text) return '';
-    
+
     let html = text;
-    
+
     // Step 1: Convert markdown to HTML BEFORE escaping
     // This order is important - we need to convert markdown first, then escape
-    
+
     // Convert **bold** to <b>bold</b> (non-greedy, handle multiple per line)
     html = html.replace(/\*\*([^*]+?)\*\*/g, '<b>$1</b>');
-    
+
     // Convert bullet points: * item or - item (preserve indentation)
     // Process line by line to handle nested bullets correctly
     const lines = html.split('\n');
     const processedLines = lines.map(line => {
       // Check if line starts with bullet (with optional indentation)
+      // eslint-disable-next-line no-useless-escape
       const bulletMatch = line.match(/^(\s*)[\*\-]\s+(.+)$/);
       if (bulletMatch) {
         const indent = bulletMatch[1];
+        // eslint-disable-next-line prefer-const
         let content = bulletMatch[2];
         // Content may already have <b> tags from previous conversion
         return indent + '• ' + content.trim();
@@ -1958,42 +2022,42 @@ export class Commands {
       return line;
     });
     html = processedLines.join('\n');
-    
+
     // Convert single *italic* to <i>italic</i> (but not **bold** or bullets)
     // Since we already converted **bold** and bullets, remaining * are for italic
     // Match *text* that's not part of ** (already converted) and not at line start
     html = html.replace(/(?<!\*)\*([^*\n<]+?)\*(?!\*)/g, '<i>$1</i>');
-    
+
     // Convert ~~strikethrough~~ to <s>strikethrough</s>
     html = html.replace(/~~(.+?)~~/g, '<s>$1</s>');
-    
+
     // Step 2: Escape HTML special characters (but preserve our tags)
     // Escape & first (but not already escaped entities)
     html = html.replace(/&(?!amp;|lt;|gt;|quot;|#\d+;)/g, '&amp;');
-    
+
     // Escape < and > that are not part of our HTML tags
     // Simple approach: escape all < and >, then restore our tags
     const tagPlaceholders: { [key: string]: string } = {};
     let placeholderIndex = 0;
-    
+
     // Temporarily replace HTML tags with placeholders
-    html = html.replace(/<\/?(?:b|i|u|s|code|pre|a)\b[^>]*>/gi, (match) => {
+    html = html.replace(/<\/?(?:b|i|u|s|code|pre|a)\b[^>]*>/gi, match => {
       const placeholder = `__TAG_${placeholderIndex++}__`;
       tagPlaceholders[placeholder] = match;
       return placeholder;
     });
-    
+
     // Now escape remaining < and >
     html = html.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    
+
     // Restore HTML tags
     for (const [placeholder, tag] of Object.entries(tagPlaceholders)) {
       html = html.replace(placeholder, tag);
     }
-    
+
     // Clean up excessive spacing
     html = html.replace(/\n{3,}/g, '\n\n');
-    
+
     return html;
   }
 
@@ -2010,19 +2074,16 @@ export class Commands {
   ): Promise<void> {
     const MAX_MESSAGE_LENGTH = 4096;
     const headerLength = header.length + 2; // +2 for \n\n
-    
+
     // Calculate available length for summary (leave some buffer for safety)
     const maxSummaryLength = MAX_MESSAGE_LENGTH - headerLength - 100; // 100 char buffer
-    
+
     // If summary fits in one message, send it normally
     if (summary.length <= maxSummaryLength) {
       try {
-        await ctx.api.editMessageText(
-          chatId,
-          loadingMsgId,
-          `${header}\n\n${summary}`,
-          { parse_mode: 'HTML' }
-        );
+        await ctx.api.editMessageText(chatId, loadingMsgId, `${header}\n\n${summary}`, {
+          parse_mode: 'HTML',
+        });
         return;
       } catch (error: any) {
         // If edit fails due to message length, fall through to splitting logic
@@ -2031,10 +2092,10 @@ export class Commands {
         }
       }
     }
-    
+
     // Split summary into chunks
     const chunks = this.splitMessage(summary, maxSummaryLength);
-    
+
     // Edit loading message with first chunk
     try {
       await ctx.api.editMessageText(
@@ -2046,23 +2107,17 @@ export class Commands {
     } catch (error: any) {
       // If even the header + first chunk is too long, send just the first chunk and continue
       if (error.message?.includes('MESSAGE_TOO_LONG')) {
-        await ctx.api.editMessageText(
-          chatId,
-          loadingMsgId,
-          chunks[0],
-          { parse_mode: 'HTML' }
-        );
+        await ctx.api.editMessageText(chatId, loadingMsgId, chunks[0], { parse_mode: 'HTML' });
       } else {
         throw error;
       }
     }
-    
+
     // Send remaining chunks as new messages
     for (let i = 1; i < chunks.length; i++) {
-      await ctx.reply(
-        `${header} (${i + 1}/${chunks.length})\n\n${chunks[i]}`,
-        { parse_mode: 'HTML' }
-      );
+      await ctx.reply(`${header} (${i + 1}/${chunks.length})\n\n${chunks[i]}`, {
+        parse_mode: 'HTML',
+      });
     }
   }
 
@@ -2074,19 +2129,19 @@ export class Commands {
     if (text.length <= maxLength) {
       return [text];
     }
-    
+
     const chunks: string[] = [];
     let remaining = text;
-    
+
     while (remaining.length > 0) {
       if (remaining.length <= maxLength) {
         chunks.push(remaining);
         break;
       }
-      
+
       // Try to find a good split point (preferably at paragraph break)
       let splitPoint = maxLength;
-      
+
       // Look for paragraph break (double newline) near the max length
       const paragraphBreak = remaining.lastIndexOf('\n\n', maxLength);
       if (paragraphBreak > maxLength * 0.7) {
@@ -2108,13 +2163,13 @@ export class Commands {
           }
         }
       }
-      
+
       // Extract chunk and add continuation indicator if not the last chunk
       const chunk = remaining.substring(0, splitPoint);
       chunks.push(chunk);
       remaining = remaining.substring(splitPoint).trim();
     }
-    
+
     return chunks;
   }
 
@@ -2125,25 +2180,25 @@ export class Commands {
    */
   private parseTLDRArgs(args: string[]): { input: string; style?: string } {
     const validStyles = ['default', 'detailed', 'brief', 'bullet', 'timeline'];
-    
+
     if (args.length === 0) {
       return { input: '1h' };
     }
-    
+
     // Join all args to handle "1 day", "2 days" etc.
     const fullInput = args.join(' ').trim();
-    
+
     // Check if the last word is a valid style
     const words = args;
     const lastWord = words[words.length - 1]?.toLowerCase();
-    
+
     if (lastWord && validStyles.includes(lastWord)) {
       // Last word is a style, remove it and use the rest as input
       const inputParts = words.slice(0, -1);
       const input = inputParts.length > 0 ? inputParts.join(' ').trim() : '1h';
       return { input, style: lastWord };
     }
-    
+
     // No style provided, return the full input as timeframe/count
     return { input: fullInput || '1h' };
   }

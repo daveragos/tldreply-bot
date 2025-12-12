@@ -42,7 +42,7 @@ async function main() {
   process.once('SIGTERM', () => bot.stop());
 }
 
-main().catch((error) => {
+main().catch(error => {
   console.error('Fatal error:', error);
   process.exit(1);
 });

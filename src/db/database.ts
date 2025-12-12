@@ -12,7 +12,7 @@ export class Database {
     });
 
     // Handle connection errors
-    this.pool.on('error', (err) => {
+    this.pool.on('error', err => {
       console.error('Unexpected error on idle database client', err);
     });
   }
@@ -53,10 +53,7 @@ export class Database {
   }
 
   async getGroup(chatId: number): Promise<any> {
-    const result = await this.query(
-      'SELECT * FROM groups WHERE telegram_chat_id = $1',
-      [chatId]
-    );
+    const result = await this.query('SELECT * FROM groups WHERE telegram_chat_id = $1', [chatId]);
     return result.rows[0];
   }
 
@@ -83,10 +80,7 @@ export class Database {
   }
 
   async deleteGroup(chatId: number): Promise<boolean> {
-    const result = await this.query(
-      'DELETE FROM groups WHERE telegram_chat_id = $1',
-      [chatId]
-    );
+    const result = await this.query('DELETE FROM groups WHERE telegram_chat_id = $1', [chatId]);
     // Returns true if a row was deleted, false otherwise
     return (result.rowCount ?? 0) > 0;
   }
@@ -117,7 +111,11 @@ export class Database {
     );
   }
 
-  async getMessagesSinceTimestamp(chatId: number, since: Date, limit: number = 1000): Promise<any[]> {
+  async getMessagesSinceTimestamp(
+    chatId: number,
+    since: Date,
+    limit: number = 1000
+  ): Promise<any[]> {
     // Allow up to 10000 messages for hierarchical summarization
     // The GeminiService will handle chunking if messages exceed 1000
     const maxLimit = Math.min(limit, 10000);
@@ -128,7 +126,11 @@ export class Database {
     return result.rows;
   }
 
-  async getMessagesSinceMessageId(chatId: number, sinceMessageId: number, limit: number = 1000): Promise<any[]> {
+  async getMessagesSinceMessageId(
+    chatId: number,
+    sinceMessageId: number,
+    limit: number = 1000
+  ): Promise<any[]> {
     // Allow up to 10000 messages for hierarchical summarization
     // The GeminiService will handle chunking if messages exceed 1000
     const maxLimit = Math.min(limit, 10000);
@@ -153,7 +155,7 @@ export class Database {
   async getMessagesToCleanup(hoursAgo: number): Promise<any[]> {
     // Get messages that are about to be deleted, grouped by chat
     const result = await this.query(
-      'SELECT * FROM messages WHERE timestamp < NOW() - (INTERVAL \'1 hour\' * $1) ORDER BY telegram_chat_id, timestamp ASC',
+      "SELECT * FROM messages WHERE timestamp < NOW() - (INTERVAL '1 hour' * $1) ORDER BY telegram_chat_id, timestamp ASC",
       [hoursAgo]
     );
     return result.rows;
@@ -163,7 +165,7 @@ export class Database {
     // Use proper PostgreSQL interval arithmetic to avoid SQL injection
     // Multiply 1 hour interval by the parameter value
     const result = await this.query(
-      'DELETE FROM messages WHERE timestamp < NOW() - (INTERVAL \'1 hour\' * $1)',
+      "DELETE FROM messages WHERE timestamp < NOW() - (INTERVAL '1 hour' * $1)",
       [hoursAgo]
     );
     console.log(`Cleaned up ${result.rowCount} old messages`);
@@ -196,7 +198,7 @@ export class Database {
   async cleanupOldSummaries(daysAgo: number): Promise<void> {
     // Delete summaries older than specified days (default 2 weeks = 14 days)
     const result = await this.query(
-      'DELETE FROM summaries WHERE created_at < NOW() - (INTERVAL \'1 day\' * $1)',
+      "DELETE FROM summaries WHERE created_at < NOW() - (INTERVAL '1 day' * $1)",
       [daysAgo]
     );
     console.log(`Cleaned up ${result.rowCount} old summaries`);
@@ -204,10 +206,9 @@ export class Database {
 
   // Group settings operations
   async getGroupSettings(chatId: number): Promise<any> {
-    const result = await this.query(
-      'SELECT * FROM group_settings WHERE telegram_chat_id = $1',
-      [chatId]
-    );
+    const result = await this.query('SELECT * FROM group_settings WHERE telegram_chat_id = $1', [
+      chatId,
+    ]);
     if (result.rows.length === 0) {
       // Create default settings if none exist
       await this.createGroupSettings(chatId);
@@ -223,17 +224,20 @@ export class Database {
     );
   }
 
-  async updateGroupSettings(chatId: number, settings: {
-    summaryStyle?: string;
-    customPrompt?: string | null;
-    excludeBotMessages?: boolean;
-    excludeCommands?: boolean;
-    excludedUserIds?: number[];
-    scheduledEnabled?: boolean;
-    scheduleFrequency?: string;
-    scheduleTime?: string;
-    scheduleTimezone?: string;
-  }): Promise<void> {
+  async updateGroupSettings(
+    chatId: number,
+    settings: {
+      summaryStyle?: string;
+      customPrompt?: string | null;
+      excludeBotMessages?: boolean;
+      excludeCommands?: boolean;
+      excludedUserIds?: number[];
+      scheduledEnabled?: boolean;
+      scheduleFrequency?: string;
+      scheduleTime?: string;
+      scheduleTimezone?: string;
+    }
+  ): Promise<void> {
     const updates: string[] = [];
     const values: any[] = [];
     let paramIndex = 1;
