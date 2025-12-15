@@ -1,4 +1,4 @@
-# TLDR Bot 🤖
+# TLDR Bot
 
 A Telegram bot that summarizes group chat conversations using Google's Gemini AI.
 
