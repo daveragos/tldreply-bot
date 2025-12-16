@@ -3,6 +3,7 @@ import { Database } from '../db/database';
 import { EncryptionService } from '../utils/encryption';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import { Pool } from 'pg';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -38,17 +39,18 @@ async function debugModels() {
     // Hack: We can extend Database class locally or just copy-paste the query logic?
     // Or just use 'pg' directly here.
 
-    const { Pool } = require('pg');
     const pool = new Pool({
-        connectionString: DATABASE_URL,
-        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+      connectionString: DATABASE_URL,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
     });
 
-    const res = await pool.query('SELECT gemini_api_key_encrypted FROM groups WHERE gemini_api_key_encrypted IS NOT NULL LIMIT 1');
+    const res = await pool.query(
+      'SELECT gemini_api_key_encrypted FROM groups WHERE gemini_api_key_encrypted IS NOT NULL LIMIT 1'
+    );
 
     if (res.rows.length === 0) {
-        console.log('❌ No configured groups found in DB.');
-        process.exit(0);
+      console.log('❌ No configured groups found in DB.');
+      process.exit(0);
     }
 
     const encryptedKey = res.rows[0].gemini_api_key_encrypted;
@@ -56,17 +58,17 @@ async function debugModels() {
 
     let apiKey = '';
     try {
-        const decrypted = encryption.decrypt(encryptedKey);
-        // It might be JSON array or string
-        try {
-            const parsed = JSON.parse(decrypted);
-            apiKey = Array.isArray(parsed) ? parsed[0] : decrypted;
-        } catch {
-            apiKey = decrypted;
-        }
+      const decrypted = encryption.decrypt(encryptedKey);
+      // It might be JSON array or string
+      try {
+        const parsed = JSON.parse(decrypted);
+        apiKey = Array.isArray(parsed) ? parsed[0] : decrypted;
+      } catch {
+        apiKey = decrypted;
+      }
     } catch (err) {
-        console.error('❌ Failed to decrypt key:', err);
-        process.exit(1);
+      console.error('❌ Failed to decrypt key:', err);
+      process.exit(1);
     }
 
     console.log(`🔑 Using API Key: ${apiKey.substring(0, 8)}...`);
@@ -84,12 +86,11 @@ async function debugModels() {
     // Pager iteration
     const foundModels: string[] = [];
 
-    // @ts-ignore
     for await (const model of response) {
-        console.log(`- ${model.name}`);
-        if (model.name) {
-            foundModels.push(model.name);
-        }
+      console.log(`- ${model.name}`);
+      if (model.name) {
+        foundModels.push(model.name);
+      }
     }
 
     console.log(`\nTotal models found: ${foundModels.length}`);
@@ -101,7 +102,6 @@ async function debugModels() {
     console.log('Pro models found:', proModels);
 
     await pool.end();
-
   } catch (error: any) {
     console.error('❌ Error:', error);
   }

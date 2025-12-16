@@ -765,15 +765,15 @@ export class Commands {
               errorMessage.includes('QUOTA_EXCEEDED') ||
               errorMessage.includes('429')
             ) {
-               const serializedKeys = JSON.stringify(validFormatKeys);
-               const encryptedKey = this.encryption.encrypt(serializedKeys);
-               await this.db.updateGroupApiKey(chatId, encryptedKey);
+              const serializedKeys = JSON.stringify(validFormatKeys);
+              const encryptedKey = this.encryption.encrypt(serializedKeys);
+              await this.db.updateGroupApiKey(chatId, encryptedKey);
 
-               await ctx.reply(
-                  `✅ Updated ${validFormatKeys.length} keys, but validation hit a quota limit.\n\n` +
+              await ctx.reply(
+                `✅ Updated ${validFormatKeys.length} keys, but validation hit a quota limit.\n\n` +
                   `They will be verified on next use.`,
-                  { parse_mode: 'HTML' }
-               );
+                { parse_mode: 'HTML' }
+              );
             } else if (
               errorMessage.includes('Invalid API key') ||
               errorMessage.includes('API_KEY_INVALID') ||

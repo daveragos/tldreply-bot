@@ -27,7 +27,7 @@ async function listModels() {
 
     const models = response.models || response || [];
     if (models.length === 0) {
-        console.log('No models found?');
+      console.log('No models found?');
     }
 
     for (const model of models) {
@@ -37,7 +37,6 @@ async function listModels() {
       console.log(`  Supported Methods: ${model.supportedGenerationMethods?.join(', ')}`);
       console.log('----------------------------------------');
     }
-
   } catch (error: any) {
     console.error('❌ Error listing models:', error.message);
     if (error.response) {

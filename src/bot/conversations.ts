@@ -253,7 +253,7 @@ async function validateAndUpdateApiKey(
       success: false,
       message:
         '❌ Could not verify admin status. Please make sure the bot is in the group and you are an admin.',
-      };
+    };
   }
 
   // Test the API keys
@@ -276,9 +276,7 @@ async function validateAndUpdateApiKey(
       errorMessage.includes('QUOTA_EXCEEDED') ||
       errorMessage.includes('429')
     ) {
-      console.log(
-        `validateAndUpdateApiKey: Quota error during validation - will save keys anyway`
-      );
+      console.log(`validateAndUpdateApiKey: Quota error during validation - will save keys anyway`);
       hadQuotaError = true;
     } else if (
       errorMessage.includes('Invalid API key') ||
@@ -297,15 +295,13 @@ async function validateAndUpdateApiKey(
     ) {
       return {
         success: false,
-        message:
-          '❌ Permission denied. Your API keys may not have access to the Gemini API.',
+        message: '❌ Permission denied. Your API keys may not have access to the Gemini API.',
       };
     } else {
-       // Other errors (network etc) - warn but save
-       console.warn(`validateAndUpdateApiKey: Unexpected error: ${errorMessage}`);
+      // Other errors (network etc) - warn but save
+      console.warn(`validateAndUpdateApiKey: Unexpected error: ${errorMessage}`);
     }
   }
-
 
   const serializedKeys = JSON.stringify(validFormatKeys);
 
@@ -319,7 +315,7 @@ async function validateAndUpdateApiKey(
     let successMessage = `✅ <b>Success!</b> Updated ${validFormatKeys.length} API key(s).`;
 
     if (invalidFormatKeys.length > 0) {
-        successMessage += `\n\n⚠️ <b>Note:</b> ${invalidFormatKeys.length} keys were skipped due to invalid format.`;
+      successMessage += `\n\n⚠️ <b>Note:</b> ${invalidFormatKeys.length} keys were skipped due to invalid format.`;
     }
 
     const quotaWarning =

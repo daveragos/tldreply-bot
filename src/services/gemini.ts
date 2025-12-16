@@ -70,7 +70,7 @@ export class GeminiService {
       'gemini-2.5-flash',
       'gemini-2.0-flash-lite-001',
       'gemini-flash-latest',
-      'gemini-2.5-pro'
+      'gemini-2.5-pro',
     ];
     const maxGlobalRetries = 3;
     let lastError: any;
@@ -100,9 +100,7 @@ export class GeminiService {
             errorMessage.includes('RESOURCE_EXHAUSTED')
           ) {
             this.markKeyAsExhausted(keyIndex);
-            console.warn(
-              `Model ${model} failed with key ${keyIndex}: Quota exceeded.`
-            );
+            console.warn(`Model ${model} failed with key ${keyIndex}: Quota exceeded.`);
 
             // Critical Fix:
             // If we have multiple keys and valid ones remain, break to try next key with SAME model (via outer loop).
@@ -110,11 +108,11 @@ export class GeminiService {
             const hasOtherKeys = this.keys.some((_, i) => !this.exhaustedKeys.has(i));
 
             if (hasOtherKeys) {
-               console.warn(`Rotating to next available key...`);
-               break; // Break model loop -> outer loop retries with next key (starting at models[0])
+              console.warn(`Rotating to next available key...`);
+              break; // Break model loop -> outer loop retries with next key (starting at models[0])
             } else {
-               console.warn(`No other keys available. Falling back to next model...`);
-               continue; // Continue model loop -> try next model (e.g. gemini-1.5) with same key
+              console.warn(`No other keys available. Falling back to next model...`);
+              continue; // Continue model loop -> try next model (e.g. gemini-1.5) with same key
             }
           }
 
@@ -124,16 +122,14 @@ export class GeminiService {
             errorMessage.includes('503') ||
             errorMessage.includes('500')
           ) {
-            console.warn(
-              `Model ${model} failed: ${errorMessage}. Falling back to next model...`
-            );
+            console.warn(`Model ${model} failed: ${errorMessage}. Falling back to next model...`);
             continue; // Try next model
           }
 
           // If auth error, maybe key is bad?
           if (errorMessage.includes('API_KEY_INVALID')) {
-             console.error(`Invalid key at index ${keyIndex}`);
-             break;
+            console.error(`Invalid key at index ${keyIndex}`);
+            break;
           }
 
           throw error; // Throw other errors immediately
@@ -142,9 +138,9 @@ export class GeminiService {
 
       // Wait before global retry if we haven't succeeded yet
       if (attempt < maxGlobalRetries - 1) {
-         // Add simple jitter: 1000ms + random(0-1000ms)
-         const delay = 1000 + Math.random() * 1000;
-         await new Promise(resolve => setTimeout(resolve, delay));
+        // Add simple jitter: 1000ms + random(0-1000ms)
+        const delay = 1000 + Math.random() * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
 
@@ -287,17 +283,8 @@ ${mergedSummaries}
 Unified Summary:`;
 
     // Summarize the merged summaries
-    try {
-      const result = await this.generateContentWithFallback(mergePrompt);
-      return (
-        result ||
-        `Summary of ${totalMessages} messages (processed in ${chunks.length} chunks)`
-      );
-    } catch (error: any) {
-      console.error('Error in hierarchical summarization:', error);
-      // Fallback: return the merged summaries as-is
-      return `Summary of ${totalMessages} messages:\n\n${mergedSummaries}`;
-    }
+    const result = await this.generateContentWithFallback(mergePrompt);
+    return result || `Summary of ${totalMessages} messages (processed in ${chunks.length} chunks)`;
   }
 
   /**
@@ -368,11 +355,7 @@ Unified Summary:`;
     }
 
     // Call API with fallback for models and keys
-    try {
-      return await this.generateContentWithFallback(prompt);
-    } catch (error: any) {
-      throw error;
-    }
+    return await this.generateContentWithFallback(prompt);
   }
 
   private getStyleInstructions(style: string): string {
