@@ -30,7 +30,7 @@ const winstonInstance = createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: combine(
     timestamp({
-      format: 'YYYY-MM-DD HH:mm:ss'
+      format: 'YYYY-MM-DD HH:mm:ss',
     }),
     errors({ stack: true }), // Handle errors gracefully
     process.env.NODE_ENV !== 'production' ? format.simple() : json()
@@ -44,52 +44,51 @@ const winstonInstance = createLogger({
       zippedArchive: true,
       maxSize: '20m',
       maxFiles: '14d',
-      format: json() // Always store JSON in files
-    })
-  ]
+      format: json(), // Always store JSON in files
+    }),
+  ],
 });
 
 // Add console transport if not in production
 if (process.env.NODE_ENV !== 'production') {
-  winstonInstance.add(new transports.Console({
-    format: combine(
-      colorize(),
-      devFormat
-    )
-  }));
+  winstonInstance.add(
+    new transports.Console({
+      format: combine(colorize(), devFormat),
+    })
+  );
 }
 
 // Wrapper class to maintain compatibility with existing code
 class LoggerWrapper {
-    private logger: WinstonLogger;
+  private logger: WinstonLogger;
 
-    constructor() {
-        this.logger = winstonInstance;
+  constructor() {
+    this.logger = winstonInstance;
+  }
+
+  info(message: string, metadata?: Record<string, unknown>): void {
+    this.logger.info(message, metadata);
+  }
+
+  warn(message: string, metadata?: Record<string, unknown>): void {
+    this.logger.warn(message, metadata);
+  }
+
+  error(message: string, error?: unknown, metadata?: Record<string, unknown>): void {
+    const meta = { ...metadata };
+
+    if (error instanceof Error) {
+      this.logger.error(message, { ...meta, error, stack: error.stack });
+    } else if (error) {
+      this.logger.error(message, { ...meta, error: String(error) });
+    } else {
+      this.logger.error(message, meta);
     }
+  }
 
-    info(message: string, metadata?: Record<string, unknown>): void {
-        this.logger.info(message, metadata);
-    }
-
-    warn(message: string, metadata?: Record<string, unknown>): void {
-        this.logger.warn(message, metadata);
-    }
-
-    error(message: string, error?: unknown, metadata?: Record<string, unknown>): void {
-        const meta = { ...metadata };
-
-        if (error instanceof Error) {
-            this.logger.error(message, { ...meta, error, stack: error.stack });
-        } else if (error) {
-             this.logger.error(message, { ...meta, error: String(error) });
-        } else {
-            this.logger.error(message, meta);
-        }
-    }
-
-    debug(message: string, metadata?: Record<string, unknown>): void {
-        this.logger.debug(message, metadata);
-    }
+  debug(message: string, metadata?: Record<string, unknown>): void {
+    this.logger.debug(message, metadata);
+  }
 }
 
 export const logger = new LoggerWrapper();

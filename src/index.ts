@@ -18,7 +18,7 @@ if (!process.env.TELEGRAM_TOKEN || !process.env.DATABASE_URL || !process.env.ENC
 }
 
 // Global error handlers to prevent crash on unhandled errors
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', error => {
   logger.error('🔥 Uncaught Exception:', error);
 });
 
