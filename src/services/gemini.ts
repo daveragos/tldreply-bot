@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { logger } from '../utils/logger';
 
 export class GeminiService {
   private keys: string[];
@@ -54,7 +55,7 @@ export class GeminiService {
     const timer = setTimeout(() => {
       this.exhaustedKeys.delete(index);
       this.exhaustionTimers.delete(index);
-      console.log(`✅ Key at index ${index} recovered from exhaustion state`);
+      logger.info(`✅ Key at index ${index} recovered from exhaustion state`);
     }, 60 * 1000);
 
     this.exhaustionTimers.set(index, timer);
@@ -100,7 +101,7 @@ export class GeminiService {
             errorMessage.includes('RESOURCE_EXHAUSTED')
           ) {
             this.markKeyAsExhausted(keyIndex);
-            console.warn(`Model ${model} failed with key ${keyIndex}: Quota exceeded.`);
+            logger.warn(`Model ${model} failed with key ${keyIndex}: Quota exceeded.`);
 
             // Critical Fix:
             // If we have multiple keys and valid ones remain, break to try next key with SAME model (via outer loop).
@@ -108,10 +109,10 @@ export class GeminiService {
             const hasOtherKeys = this.keys.some((_, i) => !this.exhaustedKeys.has(i));
 
             if (hasOtherKeys) {
-              console.warn(`Rotating to next available key...`);
+              logger.warn(`Rotating to next available key...`);
               break; // Break model loop -> outer loop retries with next key (starting at models[0])
             } else {
-              console.warn(`No other keys available. Falling back to next model...`);
+              logger.warn(`No other keys available. Falling back to next model...`);
               continue; // Continue model loop -> try next model (e.g. gemini-1.5) with same key
             }
           }
@@ -122,13 +123,13 @@ export class GeminiService {
             errorMessage.includes('503') ||
             errorMessage.includes('500')
           ) {
-            console.warn(`Model ${model} failed: ${errorMessage}. Falling back to next model...`);
+            logger.warn(`Model ${model} failed: ${errorMessage}. Falling back to next model...`);
             continue; // Try next model
           }
 
           // If auth error, maybe key is bad?
           if (errorMessage.includes('API_KEY_INVALID')) {
-            console.error(`Invalid key at index ${keyIndex}`);
+            logger.error(`Invalid key at index ${keyIndex}`);
             break;
           }
 
@@ -236,7 +237,7 @@ export class GeminiService {
       chunks.push(messages.slice(i, i + chunkSize));
     }
 
-    console.log(`📊 Summarizing ${totalMessages} messages in ${chunks.length} chunks...`);
+    logger.info(`📊 Summarizing ${totalMessages} messages in ${chunks.length} chunks...`);
 
     // Summarize each chunk (use base method to avoid recursion)
     const chunkSummaries: string[] = [];

@@ -1,4 +1,5 @@
 import { Pool, PoolClient } from 'pg';
+import { logger } from '../utils/logger';
 
 export class Database {
   private pool: Pool;
@@ -13,7 +14,7 @@ export class Database {
 
     // Handle connection errors
     this.pool.on('error', err => {
-      console.error('Unexpected error on idle database client', err);
+      logger.error('Unexpected error on idle database client', err);
     });
   }
 
@@ -30,7 +31,7 @@ export class Database {
       await this.pool.query('SELECT NOW()');
       return true;
     } catch (error) {
-      console.error('Database connection test failed:', error);
+      logger.error('Database connection test failed:', error);
       return false;
     }
   }
@@ -101,8 +102,8 @@ export class Database {
     await this.query(
       `INSERT INTO messages (telegram_chat_id, message_id, user_id, username, first_name, content)
        VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (telegram_chat_id, message_id) 
-       DO UPDATE SET 
+       ON CONFLICT (telegram_chat_id, message_id)
+       DO UPDATE SET
          content = EXCLUDED.content,
          username = EXCLUDED.username,
          first_name = EXCLUDED.first_name,
@@ -168,7 +169,7 @@ export class Database {
       "DELETE FROM messages WHERE timestamp < NOW() - (INTERVAL '1 hour' * $1)",
       [hoursAgo]
     );
-    console.log(`Cleaned up ${result.rowCount} old messages`);
+    logger.info(`Cleaned up ${result.rowCount} old messages`);
   }
 
   // Summary operations
@@ -201,7 +202,7 @@ export class Database {
       "DELETE FROM summaries WHERE created_at < NOW() - (INTERVAL '1 day' * $1)",
       [daysAgo]
     );
-    console.log(`Cleaned up ${result.rowCount} old summaries`);
+    logger.info(`Cleaned up ${result.rowCount} old summaries`);
   }
 
   // Group settings operations

@@ -1,4 +1,5 @@
 import { Context } from 'grammy';
+import { logger } from '../utils/logger';
 import { Conversation, ConversationFlavor } from '@grammyjs/conversations';
 import { GeminiService } from '../services/gemini';
 import {
@@ -139,7 +140,7 @@ export async function setupApiKey(
 
     await replyCtx.reply(successMessage);
   } catch (error: any) {
-    console.error('API key validation error:', error);
+    logger.error('API key validation error:', error);
 
     // Provide specific error messages
     const errorMessage = error.message || 'Unknown error';
@@ -192,7 +193,7 @@ async function validateAndUpdateApiKey(
   userId: number,
   ctx: MyConversationContext
 ): Promise<{ success: boolean; message: string }> {
-  console.log(
+  logger.info(
     `validateAndUpdateApiKey: Starting validation for group ${groupChatId}, user ${userId}`
   );
 
@@ -223,7 +224,7 @@ async function validateAndUpdateApiKey(
   }
 
   if (validFormatKeys.length === 0) {
-    console.log(`validateAndUpdateApiKey: No valid API keys format found`);
+    logger.info(`validateAndUpdateApiKey: No valid API keys format found`);
     return {
       success: false,
       message:
@@ -232,7 +233,7 @@ async function validateAndUpdateApiKey(
   }
 
   if (!encryption || !db) {
-    console.error(
+    logger.error(
       `validateAndUpdateApiKey: Services not available - encryption: ${!!encryption}, db: ${!!db}`
     );
     return { success: false, message: '❌ Database or encryption service not available.' };
@@ -259,16 +260,16 @@ async function validateAndUpdateApiKey(
   // Test the API keys
   let hadQuotaError = false;
   try {
-    console.log(
+    logger.info(
       `validateAndUpdateApiKey: Testing ${validFormatKeys.length} API keys for group ${groupChatId}`
     );
     // Pass all valid keys to service
     const gemini = new GeminiService(validFormatKeys);
     await gemini.summarizeMessages([{ content: 'test', timestamp: new Date().toISOString() }]);
-    console.log(`validateAndUpdateApiKey: API key test successful for group ${groupChatId}`);
+    logger.info(`validateAndUpdateApiKey: API key test successful for group ${groupChatId}`);
   } catch (error: any) {
     // If it's a quota error or simple test failure, we might still want to save valid-formatted keys
-    console.error(`validateAndUpdateApiKey: API key test failed for group ${groupChatId}:`, error);
+    logger.error(`validateAndUpdateApiKey: API key test failed for group ${groupChatId}:`, error);
     const errorMessage = error.message || 'Unknown error';
 
     if (
@@ -276,7 +277,7 @@ async function validateAndUpdateApiKey(
       errorMessage.includes('QUOTA_EXCEEDED') ||
       errorMessage.includes('429')
     ) {
-      console.log(`validateAndUpdateApiKey: Quota error during validation - will save keys anyway`);
+      logger.info(`validateAndUpdateApiKey: Quota error during validation - will save keys anyway`);
       hadQuotaError = true;
     } else if (
       errorMessage.includes('Invalid API key') ||
@@ -299,7 +300,7 @@ async function validateAndUpdateApiKey(
       };
     } else {
       // Other errors (network etc) - warn but save
-      console.warn(`validateAndUpdateApiKey: Unexpected error: ${errorMessage}`);
+      logger.warn(`validateAndUpdateApiKey: Unexpected error: ${errorMessage}`);
     }
   }
 
@@ -307,10 +308,10 @@ async function validateAndUpdateApiKey(
 
   // Update the encrypted key
   try {
-    console.log(`validateAndUpdateApiKey: Encrypting and saving ${validFormatKeys.length} keys`);
+    logger.info(`validateAndUpdateApiKey: Encrypting and saving ${validFormatKeys.length} keys`);
     const encryptedKey = encryption.encrypt(serializedKeys);
     await db.updateGroupApiKey(groupChatId, encryptedKey);
-    console.log(`validateAndUpdateApiKey: API keys successfully saved for group ${groupChatId}`);
+    logger.info(`validateAndUpdateApiKey: API keys successfully saved for group ${groupChatId}`);
 
     let successMessage = `✅ <b>Success!</b> Updated ${validFormatKeys.length} API key(s).`;
 
@@ -326,7 +327,7 @@ async function validateAndUpdateApiKey(
       message: successMessage + (hadQuotaError ? quotaWarning : ''),
     };
   } catch (error) {
-    console.error(`validateAndUpdateApiKey: Error saving API key for group ${groupChatId}:`, error);
+    logger.error(`validateAndUpdateApiKey: Error saving API key for group ${groupChatId}:`, error);
     return { success: false, message: '❌ Error saving API keys. Please try again.' };
   }
 }
@@ -337,58 +338,58 @@ export async function updateApiKey(
 ) {
   const chat = ctx.chat;
   if (!chat || chat.type !== 'private') {
-    console.log('updateApiKey: Not a private chat');
+    logger.info('updateApiKey: Not a private chat');
     return;
   }
 
   const userId = ctx.from?.id;
   if (!userId) {
-    console.log('updateApiKey: Could not identify user');
+    logger.info('updateApiKey: Could not identify user');
     await ctx.reply('❌ Could not identify user.');
     return;
   }
 
-  console.log(`updateApiKey: Starting for user ${userId}`);
+  logger.info(`updateApiKey: Starting for user ${userId}`);
 
   // Get the group chat ID from the update state
   const groupChatId = getUpdateState(chat.id);
 
   if (!groupChatId) {
-    console.log(`updateApiKey: No group selected for user ${userId}`);
+    logger.info(`updateApiKey: No group selected for user ${userId}`);
     await ctx.reply('❌ No group selected for update. Please run /update_api_key again.');
     return;
   }
 
-  console.log(`updateApiKey: Group ${groupChatId} selected for user ${userId}`);
+  logger.info(`updateApiKey: Group ${groupChatId} selected for user ${userId}`);
 
   // Wait for API key input
   try {
-    console.log(`updateApiKey: Waiting for API key from user ${userId}`);
+    logger.info(`updateApiKey: Waiting for API key from user ${userId}`);
     const apiKeyCtx = await conversation.waitFor('message:text');
     const apiKey = apiKeyCtx.message.text.trim();
 
-    console.log(`updateApiKey: Received input from user ${userId}, length: ${apiKey.length}`);
+    logger.info(`updateApiKey: Received input from user ${userId}, length: ${apiKey.length}`);
 
     clearUpdateState(chat.id);
 
     // Handle cancel
     if (apiKey.toLowerCase() === '/cancel') {
-      console.log(`updateApiKey: User ${userId} cancelled`);
+      logger.info(`updateApiKey: User ${userId} cancelled`);
       await apiKeyCtx.reply('❌ API key update cancelled.');
       return;
     }
 
     // Validate and update
-    console.log(`updateApiKey: Validating and updating API key for group ${groupChatId}`);
+    logger.info(`updateApiKey: Validating and updating API key for group ${groupChatId}`);
     const result = await validateAndUpdateApiKey(apiKey, groupChatId, userId, apiKeyCtx);
-    console.log(`updateApiKey: Result - success: ${result.success}`);
+    logger.info(`updateApiKey: Result - success: ${result.success}`);
 
     await apiKeyCtx.reply(result.message);
-    console.log(`updateApiKey: Response sent to user ${userId}`);
+    logger.info(`updateApiKey: Response sent to user ${userId}`);
   } catch (error: any) {
     clearUpdateState(chat.id);
-    console.error('Error in updateApiKey conversation:', error);
-    console.error('Error stack:', error.stack);
+    logger.error('Error in updateApiKey conversation:', error);
+    logger.error('Error stack:', error.stack);
     try {
       await ctx.reply(
         `❌ An error occurred: ${error.message || 'Unknown error'}. Please try again with /update_api_key.`

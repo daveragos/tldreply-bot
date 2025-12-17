@@ -6,6 +6,7 @@ import { Commands } from './commands';
 import { setupApiKey, updateApiKey, excludeUsers } from './conversations';
 import { setServices, clearExpiredState } from '../services/services';
 import { GeminiService } from '../services/gemini';
+import { logger } from '../utils/logger';
 
 type MyContext = ConversationFlavor<Context>;
 
@@ -50,36 +51,36 @@ export class TLDRBot {
           if (chat.type === 'group' || chat.type === 'supergroup') {
             const deleted = await this.db.deleteGroup(chat.id);
             if (deleted) {
-              console.log(`Bot removed from group ${chat.id}, cleaned up database entry`);
+              logger.info(`Bot removed from group ${chat.id}, cleaned up database entry`);
             }
           }
         }
       } catch (error) {
-        console.error('Error handling bot removal:', error);
+        logger.error('Error handling bot removal:', error);
       }
     });
 
     // Error handling
     this.bot.catch(err => {
       const ctx = err.ctx;
-      console.error(`Error while handling update ${ctx.update.update_id}:`);
+      logger.error(`Error while handling update ${ctx.update.update_id}:`);
       const e = err.error;
       if (e instanceof GrammyError) {
-        console.error('Error in request:', e.description);
+        logger.error('Error in request:', e.description);
       } else if (e instanceof HttpError) {
-        console.error('Could not contact Telegram:', e);
+        logger.error('Could not contact Telegram:', e);
       } else {
-        console.error('Unknown error:', e);
+        logger.error('Unknown error:', e);
       }
     });
 
     // Start message
-    console.log('🤖 TLDR Bot initialized');
+    logger.info('🤖 TLDR Bot initialized');
   }
 
   async start() {
     await this.bot.start();
-    console.log('✅ Bot is running!');
+    logger.info('✅ Bot is running!');
 
     // Run cleanup every 12 hours (summarize and delete messages older than 48 hours)
     this.cleanupInterval = setInterval(
@@ -87,7 +88,7 @@ export class TLDRBot {
         try {
           await this.summarizeAndCleanupOldMessages();
         } catch (error) {
-          console.error('Error during message cleanup:', error);
+          logger.error('Error during message cleanup:', error);
         }
       },
       12 * 60 * 60 * 1000
@@ -99,7 +100,7 @@ export class TLDRBot {
         try {
           await this.db.cleanupOldSummaries(14); // 14 days = 2 weeks
         } catch (error) {
-          console.error('Error during summary cleanup:', error);
+          logger.error('Error during summary cleanup:', error);
         }
       },
       24 * 60 * 60 * 1000
@@ -111,7 +112,7 @@ export class TLDRBot {
         try {
           await this.checkAndRunScheduledSummaries();
         } catch (error) {
-          console.error('Error checking scheduled summaries:', error);
+          logger.error('Error checking scheduled summaries:', error);
         }
       },
       60 * 60 * 1000
@@ -123,7 +124,7 @@ export class TLDRBot {
         try {
           await this.checkAndRunScheduledSummaries();
         } catch (error) {
-          console.error('Error in initial scheduled summary check:', error);
+          logger.error('Error in initial scheduled summary check:', error);
         }
       },
       5 * 60 * 1000
@@ -135,7 +136,7 @@ export class TLDRBot {
         try {
           await this.checkAndCleanupOrphanedGroups();
         } catch (error) {
-          console.error('Error during group cleanup check:', error);
+          logger.error('Error during group cleanup check:', error);
         }
       },
       24 * 60 * 60 * 1000
@@ -147,7 +148,7 @@ export class TLDRBot {
         try {
           await this.checkAndCleanupOrphanedGroups();
         } catch (error) {
-          console.error('Error in initial group cleanup check:', error);
+          logger.error('Error in initial group cleanup check:', error);
         }
       },
       10 * 60 * 1000
@@ -197,7 +198,7 @@ export class TLDRBot {
             if (memberError.error_code === 400 || memberError.error_code === 403) {
               await this.db.deleteGroup(group.telegram_chat_id);
               cleanedCount++;
-              console.log(
+              logger.info(
                 `Cleaned up orphaned group ${group.telegram_chat_id} (cannot verify membership)`
               );
             }
@@ -207,16 +208,16 @@ export class TLDRBot {
           if (error.error_code === 400 || error.error_code === 403) {
             await this.db.deleteGroup(group.telegram_chat_id);
             cleanedCount++;
-            console.log(`Cleaned up orphaned group ${group.telegram_chat_id} (bot not in group)`);
+            logger.info(`Cleaned up orphaned group ${group.telegram_chat_id} (bot not in group)`);
           }
         }
       }
 
       if (cleanedCount > 0) {
-        console.log(`✅ Group cleanup complete: ${cleanedCount} orphaned group(s) removed`);
+        logger.info(`✅ Group cleanup complete: ${cleanedCount} orphaned group(s) removed`);
       }
     } catch (error) {
-      console.error('Error in checkAndCleanupOrphanedGroups:', error);
+      logger.error('Error in checkAndCleanupOrphanedGroups:', error);
       throw error;
     }
   }
@@ -271,14 +272,14 @@ export class TLDRBot {
           // Update last run time
           await this.db.updateLastScheduledSummary(settings.telegram_chat_id);
         } catch (error) {
-          console.error(
+          logger.error(
             `Error processing scheduled summary for group ${settings.telegram_chat_id}:`,
             error
           );
         }
       }
     } catch (error) {
-      console.error('Error checking scheduled summaries:', error);
+      logger.error('Error checking scheduled summaries:', error);
       throw error;
     }
   }
@@ -401,7 +402,7 @@ export class TLDRBot {
         { parse_mode: 'HTML' }
       );
     } catch (error) {
-      console.error(`Error generating scheduled summary for group ${chatId}:`, error);
+      logger.error(`Error generating scheduled summary for group ${chatId}:`, error);
     }
   }
 
@@ -411,7 +412,7 @@ export class TLDRBot {
       const messagesToCleanup = await this.db.getMessagesToCleanup(48);
 
       if (messagesToCleanup.length === 0) {
-        console.log('No messages to cleanup');
+        logger.info('No messages to cleanup');
         return;
       }
 
@@ -435,7 +436,7 @@ export class TLDRBot {
 
           if (!group || !group.gemini_api_key_encrypted) {
             // Group not configured or no API key, just delete messages
-            console.log(`Group ${chatId} not configured, skipping summarization`);
+            logger.info(`Group ${chatId} not configured, skipping summarization`);
             continue;
           }
 
@@ -444,7 +445,7 @@ export class TLDRBot {
             msg => msg.content && msg.content.trim().length > 0
           );
           if (validMessages.length === 0) {
-            console.log(`Group ${chatId} has no valid messages to summarize`);
+            logger.info(`Group ${chatId} has no valid messages to summarize`);
             continue;
           }
 
@@ -481,9 +482,9 @@ export class TLDRBot {
           await this.db.createGroupSettings(chatId);
 
           totalSummarized++;
-          console.log(`Summarized ${validMessages.length} messages for group ${chatId}`);
+          logger.info(`Summarized ${validMessages.length} messages for group ${chatId}`);
         } catch (error) {
-          console.error(`Error summarizing messages for group ${chatId}:`, error);
+          logger.error(`Error summarizing messages for group ${chatId}:`, error);
           // Continue with other groups even if one fails
         }
       }
@@ -492,11 +493,11 @@ export class TLDRBot {
       await this.db.cleanupOldMessages(48);
       totalDeleted = messagesToCleanup.length;
 
-      console.log(
+      logger.info(
         `✅ Cleanup complete: ${totalSummarized} groups summarized, ${totalDeleted} messages deleted`
       );
     } catch (error) {
-      console.error('Error in summarizeAndCleanupOldMessages:', error);
+      logger.error('Error in summarizeAndCleanupOldMessages:', error);
       throw error;
     }
   }
@@ -515,7 +516,7 @@ export class TLDRBot {
       clearInterval(this.groupCleanupInterval);
     }
     await this.bot.stop();
-    console.log('⏹️ Bot stopped');
+    logger.info('⏹️ Bot stopped');
   }
 
   getBot(): Bot<MyContext> {

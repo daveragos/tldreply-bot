@@ -1,4 +1,5 @@
 import { Bot, Context, InlineKeyboard } from 'grammy';
+import { logger } from '../utils/logger';
 import { ConversationFlavor } from '@grammyjs/conversations';
 import { Database } from '../db/database';
 import { EncryptionService } from '../utils/encryption';
@@ -30,7 +31,7 @@ export class Commands {
       const member = await ctx.api.getChatMember(chatId, userId);
       return member.status === 'administrator' || member.status === 'creator';
     } catch (error) {
-      console.error('Error checking admin status:', error);
+      logger.error('Error checking admin status:', error);
       return false;
     }
   }
@@ -139,7 +140,7 @@ export class Commands {
           return;
         }
       } catch (error) {
-        console.error('Error checking pending setups:', error);
+        logger.error('Error checking pending setups:', error);
       }
 
       const keyboard = new InlineKeyboard()
@@ -233,7 +234,7 @@ export class Commands {
         }
       );
     } catch (error) {
-      console.error('Error setting up group:', error);
+      logger.error('Error setting up group:', error);
       await ctx.reply('❌ Error starting setup. Please try again.');
     }
   }
@@ -303,7 +304,7 @@ export class Commands {
         );
       }
     } catch (error) {
-      console.error('Error continuing setup:', error);
+      logger.error('Error continuing setup:', error);
       await ctx.reply('❌ Error. Please try again.');
     }
   }
@@ -408,7 +409,7 @@ export class Commands {
         await ctx.reply('❌ Invalid group type. Please provide a valid group or supergroup.');
       }
     } catch (error: any) {
-      console.error('Error setting up group:', error);
+      logger.error('Error setting up group:', error);
 
       const isPrivateGroup = /^-?\d+$/.test(args[1]?.replace('@', '') || '');
 
@@ -618,7 +619,7 @@ export class Commands {
 
       await ctx.reply(message, { parse_mode: 'HTML' });
     } catch (error) {
-      console.error('Error listing groups:', error);
+      logger.error('Error listing groups:', error);
       await ctx.reply('❌ Error retrieving groups.');
     }
   }
