@@ -160,10 +160,13 @@ export class GeminiService {
       timestamp: string;
       isBot?: boolean;
       isChannel?: boolean;
+      messageId?: number;
     }>,
     options?: {
       customPrompt?: string | null;
       summaryStyle?: string;
+      chatId?: number;
+      chatUsername?: string;
     },
     retryCount: number = 0
   ): Promise<string> {
@@ -230,10 +233,13 @@ export class GeminiService {
       timestamp: string;
       isBot?: boolean;
       isChannel?: boolean;
+      messageId?: number;
     }>,
     options?: {
       customPrompt?: string | null;
       summaryStyle?: string;
+      chatId?: number;
+      chatUsername?: string;
     },
     chunkSize: number = 900
   ): Promise<string> {
@@ -285,6 +291,7 @@ CRITICAL: When referring to users in the summary, ALWAYS use their actual userna
     - Do NOT wrap usernames/names in brackets [], or add formatting around them
     - Write usernames/names exactly as they appear: @username (with underscores if part of the username) or FirstName
     - DO NOT use underscores for formatting/emphasis (like _text_ for underlines) - but keep underscores that are part of actual usernames/names
+    - **CRITICAL: Each point in the unified summary MUST include a link to the original message if provided in the partial summaries. Use the exact link format: (https://t.me/...)**
 
 Partial Summaries:
 ${mergedSummaries}
@@ -307,10 +314,13 @@ Unified Summary:`;
       timestamp: string;
       isBot?: boolean;
       isChannel?: boolean;
+      messageId?: number;
     }>,
     options?: {
       customPrompt?: string | null;
       summaryStyle?: string;
+      chatId?: number;
+      chatUsername?: string;
     }
   ): Promise<string> {
     if (messages.length === 0) {
@@ -329,7 +339,11 @@ Unified Summary:`;
           user = msg.username ? `@${msg.username}` : msg.firstName || 'Unknown';
         }
         const content = msg.content;
-        return `${idx + 1}. ${user}: ${content}`;
+        const link =
+          options?.chatId && msg.messageId
+            ? ` (${this.formatTelegramLink(options.chatId, msg.messageId, options.chatUsername)})`
+            : '';
+        return `${idx + 1}. ${user}: ${content}${link}`;
       })
       .join('\n\n');
 
@@ -364,6 +378,7 @@ Unified Summary:`;
     - Keep the summary clear and organized
     - DO NOT use underscores for formatting/emphasis (like _text_ for underlines) - but preserve underscores that are part of usernames/names (e.g., @user_name is correct)
     - DO NOT use any underline formatting in the summary
+    - **CRITICAL: For each point in the summary, you MUST include the original message link provided in the conversation (e.g., (https://t.me/...)) right after the information from that message.**
 
     Conversation:
     ${formattedMessages}
@@ -393,5 +408,15 @@ Unified Summary:`;
   static validateApiKey(apiKey: string): boolean {
     // Basic validation - Gemini API keys typically have this format
     return apiKey.length > 20 && /^[A-Za-z0-9_-]+$/.test(apiKey);
+  }
+
+  private formatTelegramLink(chatId: number, messageId: number, chatUsername?: string): string {
+    if (chatUsername) {
+      return `https://t.me/${chatUsername}/${messageId}`;
+    }
+    // For private groups/channels, use the c/ID format
+    // Telegram IDs usually look like -100123456789. We need the part after -100
+    const cleanId = Math.abs(chatId).toString().replace(/^100/, '');
+    return `https://t.me/c/${cleanId}/${messageId}`;
   }
 }

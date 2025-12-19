@@ -140,11 +140,14 @@ export class GroupCommands extends BaseCommand {
         timestamp: msg.timestamp,
         isBot: msg.is_bot,
         isChannel: msg.is_channel,
+        messageId: msg.message_id,
       }));
 
       const summary = await gemini.summarizeMessages(formattedMessages, {
         customPrompt: settings.custom_prompt,
         summaryStyle: summaryStyle,
+        chatId: chat.id,
+        chatUsername: chat.username,
       });
 
       // Convert markdown to HTML
@@ -236,10 +239,22 @@ export class GroupCommands extends BaseCommand {
       // Use user-provided style if available, otherwise fall back to group setting
       const summaryStyle = parsedArgs.style || settings.summary_style;
 
+      const formattedMessages = filteredMessages.map(msg => ({
+        username: msg.username,
+        firstName: msg.first_name,
+        content: msg.content,
+        timestamp: msg.timestamp,
+        isBot: msg.is_bot,
+        isChannel: msg.is_channel,
+        messageId: msg.message_id,
+      }));
+
       const gemini = new GeminiService(decryptedKey);
-      const summary = await gemini.summarizeMessages(filteredMessages, {
+      const summary = await gemini.summarizeMessages(formattedMessages, {
         customPrompt: settings.custom_prompt,
         summaryStyle: summaryStyle,
+        chatId: chat.id,
+        chatUsername: chat.username,
       });
 
       // Convert markdown to HTML

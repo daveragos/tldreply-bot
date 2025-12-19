@@ -99,7 +99,7 @@ export class SchedulerService {
             const lastRun = new Date(settings.last_scheduled_summary);
             const hoursSinceLastRun = (now.getTime() - lastRun.getTime()) / (1000 * 60 * 60);
             if (hoursSinceLastRun < 23) {
-              continue; // Already ran in the last 23 hours
+              continue;
             }
           }
 
@@ -157,6 +157,7 @@ export class SchedulerService {
         timestamp: msg.timestamp,
         isBot: msg.is_bot,
         isChannel: msg.is_channel,
+        messageId: msg.message_id,
       }));
 
       const decryptedKey = this.encryption.decrypt(group.gemini_api_key_encrypted);
@@ -164,6 +165,8 @@ export class SchedulerService {
       const summary = await gemini.summarizeMessages(formattedMessages, {
         customPrompt: settings.custom_prompt,
         summaryStyle: settings.summary_style,
+        chatId: chatId,
+        chatUsername: group.username,
       });
 
       // Convert markdown to HTML
