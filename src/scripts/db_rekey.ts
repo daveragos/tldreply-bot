@@ -63,6 +63,37 @@ export function validateNewSecret(next: string, current: string): string | null 
   return null;
 }
 
+/**
+ * Reads a decrypted key blob in either storage format.
+ *
+ * Records written before multi-key support hold a bare "AIzaSy..." string
+ * rather than a JSON array. GeminiService already accepts both, so requiring
+ * JSON here would reject perfectly valid records that decrypted fine.
+ */
+export function parseStoredKeys(plaintext: string): { keys: string[]; wasBareString: boolean } {
+  try {
+    const parsed = JSON.parse(plaintext);
+
+    if (Array.isArray(parsed)) {
+      return {
+        keys: parsed.filter(k => typeof k === 'string' && k.length > 0),
+        wasBareString: false,
+      };
+    }
+
+    // Valid JSON but not an array, e.g. a bare quoted string.
+    if (typeof parsed === 'string' && parsed.length > 0) {
+      return { keys: [parsed], wasBareString: true };
+    }
+
+    return { keys: [], wasBareString: false };
+  } catch {
+    // Not JSON at all: the original single-key format.
+    const trimmed = plaintext.trim();
+    return { keys: trimmed ? [trimmed] : [], wasBareString: true };
+  }
+}
+
 async function main(): Promise<void> {
   const currentSecret = process.env.ENCRYPTION_SECRET;
   const newSecret = arg('new');
@@ -146,15 +177,27 @@ async function main(): Promise<void> {
       const chatId = String(row.telegram_chat_id);
       try {
         const plaintext = oldCrypto.decrypt(row.gemini_api_key_encrypted);
+        const { keys, wasBareString } = parseStoredKeys(plaintext);
 
-        // Confirm the decrypted value is what we expect before re-encrypting.
-        const keys = JSON.parse(plaintext);
-        const count = Array.isArray(keys) ? keys.length : 1;
+        if (keys.length === 0) {
+          throw new Error('decrypted to an empty key list');
+        }
 
-        rotated.push({ chatId, blob: newCrypto.encrypt(plaintext) });
-        const legacy = EncryptionService.isLegacyFormat(row.gemini_api_key_encrypted);
+        // Re-encrypt in the canonical array form. Records written before
+        // multi-key support hold a bare key string; GeminiService accepts both,
+        // so normalising here is safe and makes storage uniform.
+        rotated.push({ chatId, blob: newCrypto.encrypt(JSON.stringify(keys)) });
+
+        const notes: string[] = [];
+        if (EncryptionService.isLegacyFormat(row.gemini_api_key_encrypted)) {
+          notes.push('upgrading from legacy CBC');
+        }
+        if (wasBareString) {
+          notes.push('normalising single-key format');
+        }
+
         console.log(
-          `  ✓ ${chatId}  ${count} key(s)${legacy ? '  [upgrading from legacy CBC]' : ''}`
+          `  ✓ ${chatId}  ${keys.length} key(s)${notes.length ? `  [${notes.join(', ')}]` : ''}`
         );
       } catch (error) {
         failed++;
