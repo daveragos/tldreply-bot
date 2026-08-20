@@ -71,7 +71,9 @@ describe('parseStoredKeys', () => {
   });
 
   test('drops empty entries from an array', () => {
-    assert.deepEqual(parseStoredKeys(JSON.stringify(['test-key-ok', '', null])).keys, ['test-key-ok']);
+    assert.deepEqual(parseStoredKeys(JSON.stringify(['test-key-ok', '', null])).keys, [
+      'test-key-ok',
+    ]);
   });
 
   test('reports an empty result for blank input', () => {

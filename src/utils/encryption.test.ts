@@ -23,10 +23,7 @@ describe('EncryptionService', () => {
   });
 
   test('round-trips the serialized multi-key format', () => {
-    const keys = JSON.stringify([
-      'test-key-first-000001',
-      'AQ.SECOND_TEST_KEY_PADDED_00',
-    ]);
+    const keys = JSON.stringify(['test-key-first-000001', 'AQ.SECOND_TEST_KEY_PADDED_00']);
     assert.equal(service.decrypt(service.encrypt(keys)), keys);
   });
 
