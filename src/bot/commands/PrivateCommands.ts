@@ -236,6 +236,11 @@ export class PrivateCommands extends BaseCommand {
         }
 
         await this.db.createGroup(chatId, chat.id);
+        await this.db.groups.updateGroupIdentity(
+          chatId,
+          'username' in chatInfo ? (chatInfo.username ?? null) : null,
+          'title' in chatInfo ? (chatInfo.title ?? null) : null
+        );
 
         const groupName = 'title' in chatInfo ? chatInfo.title : `Group ${chatId}`;
 

@@ -91,6 +91,11 @@ export class AdminCommands extends BaseCommand {
       }
 
       await this.db.createGroup(chat.id, userId);
+      await this.db.groups.updateGroupIdentity(
+        chat.id,
+        'username' in chat ? (chat.username ?? null) : null,
+        'title' in chat ? (chat.title ?? null) : null
+      );
 
       await ctx.reply(
         `👋 Hello! I'm ready to help you summarize this group.\n\n` +

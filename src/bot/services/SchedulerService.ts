@@ -21,9 +21,6 @@ export class SchedulerService {
     try {
       const groupsWithSchedules = await this.db.getGroupsWithScheduledSummaries();
       const now = new Date();
-      const currentHour = now.getUTCHours();
-      const currentMinute = now.getUTCMinutes();
-      const currentDay = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
 
       for (const settings of groupsWithSchedules) {
         try {

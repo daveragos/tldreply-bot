@@ -7,10 +7,18 @@ CREATE TABLE IF NOT EXISTS groups (
     gemini_api_key_encrypted TEXT,
     enabled BOOLEAN DEFAULT true,
     setup_by_user_id BIGINT,
+    -- Public @username and display title, cached at setup so background jobs
+    -- can build correct message links without a getChat round trip.
+    username TEXT,
+    title TEXT,
     setup_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Migrations for databases created before these columns existed.
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS username TEXT;
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS title TEXT;
 
 -- Messages table: caches recent messages for summarization
 CREATE TABLE IF NOT EXISTS messages (

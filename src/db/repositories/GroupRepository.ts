@@ -1,4 +1,5 @@
 import { BaseRepository } from './BaseRepository';
+import { groupCache, invalidateGroupCache } from '../groupCache';
 
 export class GroupRepository extends BaseRepository {
   async createGroup(chatId: number, userId: number): Promise<void> {
@@ -14,10 +15,39 @@ export class GroupRepository extends BaseRepository {
   }
 
   async getGroup(chatId: number): Promise<any> {
+    const cached = groupCache.getGroup(chatId);
+    if (cached !== undefined) return cached ?? undefined;
+
     const result = await this.db.query('SELECT * FROM groups WHERE telegram_chat_id = $1', [
       chatId,
     ]);
-    return result.rows[0];
+    const group = result.rows[0];
+
+    // Misses are cached too: an unconfigured chat that chats a lot would
+    // otherwise re-query on every single message.
+    groupCache.setGroup(chatId, group ?? null);
+    return group;
+  }
+
+  /**
+   * Records a group's public username and title.
+   *
+   * Background jobs have no ctx to call getChat with, and without the username
+   * they can only build private-style t.me/c/ links, which do not resolve for
+   * anyone who is not a member.
+   */
+  async updateGroupIdentity(
+    chatId: number,
+    username: string | null,
+    title: string | null
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE groups
+       SET username = $1, title = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE telegram_chat_id = $3`,
+      [username, title, chatId]
+    );
+    invalidateGroupCache(chatId);
   }
 
   async updateGroupApiKey(chatId: number, encryptedKey: string): Promise<void> {
@@ -25,6 +55,7 @@ export class GroupRepository extends BaseRepository {
       'UPDATE groups SET gemini_api_key_encrypted = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_chat_id = $2',
       [encryptedKey, chatId]
     );
+    invalidateGroupCache(chatId);
   }
 
   async toggleGroupEnabled(chatId: number, enabled: boolean): Promise<void> {
@@ -32,6 +63,7 @@ export class GroupRepository extends BaseRepository {
       'UPDATE groups SET enabled = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_chat_id = $2',
       [enabled, chatId]
     );
+    invalidateGroupCache(chatId);
   }
 
   async listGroupsForUser(userId: number): Promise<any[]> {
@@ -43,6 +75,7 @@ export class GroupRepository extends BaseRepository {
   }
 
   async deleteGroup(chatId: number): Promise<boolean> {
+    invalidateGroupCache(chatId);
     const result = await this.db.query('DELETE FROM groups WHERE telegram_chat_id = $1', [chatId]);
     // Returns true if a row was deleted, false otherwise
     return (result.rowCount ?? 0) > 0;
@@ -50,14 +83,26 @@ export class GroupRepository extends BaseRepository {
 
   // Group settings operations
   async getGroupSettings(chatId: number): Promise<any> {
+    const cached = groupCache.getSettings(chatId);
+    if (cached !== undefined) return cached;
+
     const result = await this.db.query('SELECT * FROM group_settings WHERE telegram_chat_id = $1', [
       chatId,
     ]);
+
     if (result.rows.length === 0) {
       // Create default settings if none exist
       await this.createGroupSettings(chatId);
-      return await this.getGroupSettings(chatId);
+      const created = await this.db.query(
+        'SELECT * FROM group_settings WHERE telegram_chat_id = $1',
+        [chatId]
+      );
+      const row = created.rows[0];
+      if (row) groupCache.setSettings(chatId, row);
+      return row;
     }
+
+    groupCache.setSettings(chatId, result.rows[0]);
     return result.rows[0];
   }
 
@@ -132,6 +177,7 @@ export class GroupRepository extends BaseRepository {
       `UPDATE group_settings SET ${updates.join(', ')} WHERE telegram_chat_id = $${paramIndex}`,
       values
     );
+    invalidateGroupCache(chatId);
   }
 
   async updateLastScheduledSummary(chatId: number): Promise<void> {

@@ -10,6 +10,21 @@ export class GroupCommands extends BaseCommand {
   private rateLimitMap = new Map<string, number>();
   private readonly RATE_LIMIT_SECONDS = 60; // 1 minute per user/group
 
+  /**
+   * Records a rate-limit hit and drops expired entries.
+   *
+   * The map was previously only ever written, leaving one permanent entry per
+   * user per group for the life of the process.
+   */
+  private touchRateLimit(key: string, now: number): void {
+    this.rateLimitMap.set(key, now);
+
+    const cutoff = now - this.RATE_LIMIT_SECONDS * 1000;
+    for (const [existing, timestamp] of this.rateLimitMap) {
+      if (timestamp < cutoff) this.rateLimitMap.delete(existing);
+    }
+  }
+
   register() {
     this.bot.command('tldr', this.handleTLDR.bind(this));
     this.bot.command('tldr_info', this.handleTLDRInfo.bind(this));
@@ -51,9 +66,6 @@ export class GroupCommands extends BaseCommand {
         return;
       }
 
-      // Update rate limit
-      this.rateLimitMap.set(rateLimitKey, now);
-
       // Check if group is configured
       const group = await this.db.getGroup(chat.id);
 
@@ -69,6 +81,11 @@ export class GroupCommands extends BaseCommand {
         await ctx.reply('❌ TLDR is currently disabled for this group.');
         return;
       }
+
+      // Charged only once the request is known to be actionable, so a user in
+      // an unconfigured or disabled group is not locked out for a minute over
+      // an error message.
+      this.touchRateLimit(rateLimitKey, now);
 
       // Handle reply-to message case
       const replyToMessage = ctx.message?.reply_to_message;
@@ -683,6 +700,12 @@ export class GroupCommands extends BaseCommand {
         return;
       }
     } catch (error) {
+      // A transient database error here silently drops the message from the
+      // cache; at minimum it should be visible in the logs.
+      logger.warn('Could not load group config while caching message', {
+        chatId: chat.id,
+        error: String(error),
+      });
       return;
     }
 
