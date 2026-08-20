@@ -448,12 +448,12 @@ CRITICAL: When referring to users in the summary, ALWAYS use their actual userna
     let prompt = '';
 
     if (options?.customPrompt) {
-      // For custom prompts, use structured format to protect against injection
-      // Replace the placeholder with structured format
-      const customPromptText = options.customPrompt.replace(
-        '{{messages}}',
-        '<conversation_messages>PLACEHOLDER</conversation_messages>'
-      );
+      // The messages are appended by buildStructuredPrompt in their own
+      // delimited section, so a {{messages}} token in the custom prompt has
+      // nothing to substitute. It used to be replaced with a literal
+      // "PLACEHOLDER" block, which the model then saw alongside the real one.
+      const customPromptText = options.customPrompt.replace(/\{\{\s*messages\s*\}\}/g, '').trim();
+
       prompt = this.buildStructuredPrompt(
         `You are a helpful assistant that summarizes Telegram group chat conversations.
 

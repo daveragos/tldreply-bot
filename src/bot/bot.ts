@@ -3,7 +3,13 @@ import { conversations, createConversation, ConversationFlavor } from '@grammyjs
 import { Database } from '../db/database';
 import { EncryptionService } from '../utils/encryption';
 import { CommandRegistry } from './CommandRegistry';
-import { setupApiKey, updateApiKey, excludeUsers } from './conversations';
+import {
+  setupApiKey,
+  updateApiKey,
+  excludeUsers,
+  setCustomPrompt,
+  setScheduleTimezone,
+} from './conversations';
 import { setServices, clearExpiredState } from '../services/services';
 import { logger } from '../utils/logger';
 import { CleanupService } from './services/CleanupService';
@@ -43,6 +49,8 @@ export class TLDRBot {
     this.bot.use(createConversation(setupApiKey));
     this.bot.use(createConversation(updateApiKey));
     this.bot.use(createConversation(excludeUsers));
+    this.bot.use(createConversation(setCustomPrompt));
+    this.bot.use(createConversation(setScheduleTimezone));
 
     // Register Commands
     const registry = new CommandRegistry(this.bot, this.db, this.encryption);

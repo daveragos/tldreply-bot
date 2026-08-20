@@ -540,3 +540,137 @@ export async function excludeUsers(
     );
   }
 }
+
+/**
+ * Captures a group's custom summarization prompt.
+ *
+ * The settings menu previously printed instructions and stopped there - the
+ * TODO for this handler was never filled in, so custom_prompt was null for
+ * every group while the code consuming it sat fully written in gemini.ts.
+ */
+export async function setCustomPrompt(
+  conversation: Conversation<MyContext>,
+  ctx: MyConversationContext
+) {
+  const chat = ctx.chat;
+  if (!chat || chat.type === 'private') {
+    await ctx.reply('❌ This feature can only be used in group chats.');
+    return;
+  }
+
+  if (!db) {
+    await ctx.reply('❌ Database service not available.');
+    return;
+  }
+
+  const groupChatId = chat.id;
+
+  await ctx.reply(
+    '🔧 <b>Custom Prompt</b>\n\n' +
+      'Send the instructions you want the AI to follow when summarizing this group.\n\n' +
+      '<b>Example:</b>\n' +
+      '<code>Summarize in exactly 3 bullet points. Focus on decisions, ignore small talk.</code>\n\n' +
+      'The messages are appended automatically — you do not need a placeholder.\n\n' +
+      'Send <code>/clear</code> to remove the custom prompt and go back to the built-in styles.\n' +
+      'Send <code>/cancel</code> to leave it unchanged.',
+    { parse_mode: 'HTML' }
+  );
+
+  const inputCtx = await conversation.waitFor('message:text');
+  const text = inputCtx.message.text.trim();
+
+  if (text.toLowerCase() === '/cancel') {
+    await inputCtx.reply('❌ Cancelled. The custom prompt is unchanged.');
+    return;
+  }
+
+  if (text.toLowerCase() === '/clear') {
+    await db.updateGroupSettings(groupChatId, { customPrompt: null });
+    await inputCtx.reply('✅ Custom prompt removed. Summaries will use the selected style again.');
+    return;
+  }
+
+  const MAX_PROMPT_LENGTH = 1000;
+  if (text.length > MAX_PROMPT_LENGTH) {
+    await inputCtx.reply(
+      `❌ That prompt is ${text.length} characters. Please keep it under ${MAX_PROMPT_LENGTH}.`
+    );
+    return;
+  }
+
+  await db.updateGroupSettings(groupChatId, { customPrompt: text });
+
+  await inputCtx.reply(
+    '✅ <b>Custom prompt saved.</b>\n\n' +
+      'It will be used for every summary in this group, in place of the style setting.\n\n' +
+      '<i>Run /tldr_settings → Custom Prompt → /clear to undo.</i>',
+    { parse_mode: 'HTML' }
+  );
+}
+
+/**
+ * Captures a group's schedule timezone.
+ *
+ * SchedulerService has always read schedule_timezone and resolved it with
+ * Intl, but nothing ever wrote the column, so every group was pinned to UTC.
+ */
+export async function setScheduleTimezone(
+  conversation: Conversation<MyContext>,
+  ctx: MyConversationContext
+) {
+  const chat = ctx.chat;
+  if (!chat || chat.type === 'private') {
+    await ctx.reply('❌ This feature can only be used in group chats.');
+    return;
+  }
+
+  if (!db) {
+    await ctx.reply('❌ Database service not available.');
+    return;
+  }
+
+  await ctx.reply(
+    '🌍 <b>Schedule Timezone</b>\n\n' +
+      'Send your timezone name, for example:\n' +
+      '<code>Africa/Addis_Ababa</code>\n' +
+      '<code>Europe/London</code>\n' +
+      '<code>America/New_York</code>\n' +
+      '<code>Asia/Dubai</code>\n\n' +
+      'Send <code>/cancel</code> to keep the current setting.',
+    { parse_mode: 'HTML' }
+  );
+
+  const inputCtx = await conversation.waitFor('message:text');
+  const input = inputCtx.message.text.trim();
+
+  if (input.toLowerCase() === '/cancel') {
+    await inputCtx.reply('❌ Cancelled. The timezone is unchanged.');
+    return;
+  }
+
+  // Intl throws on an unknown zone, which is the cheapest reliable validation.
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: input }).format(new Date());
+  } catch {
+    await inputCtx.reply(
+      `❌ "${input}" is not a timezone Telegram's server recognizes.\n\n` +
+        'Use an IANA name like <code>Africa/Addis_Ababa</code>. ' +
+        'Search "IANA timezone list" if you are unsure.',
+      { parse_mode: 'HTML' }
+    );
+    return;
+  }
+
+  await db.updateGroupSettings(chat.id, { scheduleTimezone: input });
+
+  const localTime = new Intl.DateTimeFormat('en-GB', {
+    timeZone: input,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date());
+
+  await inputCtx.reply(
+    `✅ Timezone set to <b>${input}</b>.\n\nIt is currently ${localTime} there.`,
+    { parse_mode: 'HTML' }
+  );
+}

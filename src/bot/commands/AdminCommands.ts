@@ -34,6 +34,11 @@ export class AdminCommands extends BaseCommand {
     this.bot.callbackQuery(/^filter_cmd_(-?\d+)$/, this.handleFilterCmd.bind(this));
     this.bot.callbackQuery(/^filter_users_(-?\d+)$/, this.handleFilterUsers.bind(this));
 
+    // Schedule time and timezone
+    this.bot.callbackQuery(/^schedule_time_(-?\d+)$/, this.handleScheduleTimeMenu.bind(this));
+    this.bot.callbackQuery(/^schedule_hour_(\d{1,2})_(-?\d+)$/, this.handleScheduleHour.bind(this));
+    this.bot.callbackQuery(/^schedule_tz_(-?\d+)$/, this.handleScheduleTimezone.bind(this));
+
     // Styles
     this.bot.callbackQuery(
       /^style_(default|detailed|brief|bullet|timeline)_(-?\d+)$/,
@@ -202,13 +207,18 @@ export class AdminCommands extends BaseCommand {
         .text('📅 Daily', `schedule_freq_daily_${chat.id}`)
         .text('📆 Weekly', `schedule_freq_weekly_${chat.id}`)
         .row()
+        .text('🕐 Time', `schedule_time_${chat.id}`)
+        .text('🌍 Timezone', `schedule_tz_${chat.id}`)
+        .row()
         .text('↩️ Back', 'settings_back');
 
+      const timezone = settings.schedule_timezone || 'UTC';
       const messageText =
         '⏰ <b>Scheduled Summaries</b>\n\n' +
         `Status: ${settings.scheduled_enabled ? '✅ Enabled' : '❌ Disabled'}\n` +
-        `Frequency: ${settings.schedule_frequency || 'daily'}\n` +
-        `Time: ${settings.schedule_time || '09:00'} UTC\n\n` +
+        `Frequency: ${settings.schedule_frequency || 'daily'}` +
+        `${settings.schedule_frequency === 'weekly' ? ' (Sundays)' : ''}\n` +
+        `Time: ${this.formatScheduleTime(settings.schedule_time)} ${timezone}\n\n` +
         'Configure automatic summaries:';
 
       if (ctx.callbackQuery) {
@@ -345,15 +355,7 @@ export class AdminCommands extends BaseCommand {
 
   private async handleSettingsPrompt(ctx: MyContext) {
     if (!(await this.requireAdminForCallback(ctx))) return;
-    await ctx.editMessageText(
-      '🔧 <b>Custom Prompt</b>\n\n' +
-        'Send your custom prompt. Use <code>{{messages}}</code> as a placeholder for messages.\n\n' +
-        'Example:\n' +
-        '<code>Summarize these messages in 3 bullet points:\n{{messages}}</code>\n\n' +
-        'Send /cancel to go back.',
-      { parse_mode: 'HTML' }
-    );
-    // TODO: Add conversation handler for custom prompt
+    await ctx.conversation.enter('setCustomPrompt', { overwrite: true });
   }
 
   private async handleSettingsFilterMenu(ctx: MyContext) {
@@ -379,7 +381,7 @@ export class AdminCommands extends BaseCommand {
           `<b>Scheduling:</b>\n` +
           `Enabled: ${settings.scheduled_enabled ? '✅' : '❌'}\n` +
           `Frequency: ${settings.schedule_frequency || 'daily'}\n` +
-          `Time: ${settings.schedule_time || '09:00'} UTC`,
+          `Time: ${this.formatScheduleTime(settings.schedule_time)} ${settings.schedule_timezone || 'UTC'}`,
         {
           parse_mode: 'HTML',
           reply_markup: new InlineKeyboard().text('↩️ Back', 'settings_back'),
@@ -507,5 +509,71 @@ export class AdminCommands extends BaseCommand {
     if (!(await this.requireAdminForCallback(ctx))) return;
 
     await ctx.conversation.enter('excludeUsers', { overwrite: true });
+  }
+
+  /** Renders "HH:MM" from a Postgres TIME value. */
+  private formatScheduleTime(scheduleTime?: string): string {
+    return (scheduleTime || '09:00:00').slice(0, 5);
+  }
+
+  private async handleScheduleTimeMenu(ctx: MyContext) {
+    if (!(await this.requireAdminForCallback(ctx))) return;
+
+    const match = ctx.callbackQuery?.data?.match(/^schedule_time_(-?\d+)$/);
+    if (!match) return;
+    const chatId = parseInt(match[1], 10);
+    if (!this.callbackChatIdMatches(ctx, chatId)) return;
+
+    const settings = await this.db.getGroupSettings(chatId);
+    const currentHour = parseInt(this.formatScheduleTime(settings.schedule_time).slice(0, 2), 10);
+
+    // 24 hours in rows of four, with the active hour marked.
+    const keyboard = new InlineKeyboard();
+    for (let hour = 0; hour < 24; hour++) {
+      const label = `${String(hour).padStart(2, '0')}:00`;
+      keyboard.text(hour === currentHour ? `• ${label}` : label, `schedule_hour_${hour}_${chatId}`);
+      if ((hour + 1) % 4 === 0) keyboard.row();
+    }
+    keyboard.text('↩️ Back', 'settings_schedule');
+
+    await ctx.editMessageText(
+      '🕐 <b>Summary Time</b>\n\n' +
+        `Currently <b>${this.formatScheduleTime(settings.schedule_time)}</b> ` +
+        `${settings.schedule_timezone || 'UTC'}.\n\n` +
+        'Pick the hour the summary should be posted:',
+      { parse_mode: 'HTML', reply_markup: keyboard }
+    );
+  }
+
+  private async handleScheduleHour(ctx: MyContext) {
+    if (!(await this.requireAdminForCallback(ctx))) return;
+
+    const match = ctx.callbackQuery?.data?.match(/^schedule_hour_(\d{1,2})_(-?\d+)$/);
+    if (!match) return;
+
+    const hour = parseInt(match[1], 10);
+    const chatId = parseInt(match[2], 10);
+    if (!this.callbackChatIdMatches(ctx, chatId)) return;
+    if (hour < 0 || hour > 23) return;
+
+    try {
+      await this.db.updateGroupSettings(chatId, {
+        scheduleTime: `${String(hour).padStart(2, '0')}:00:00`,
+      });
+      await this.renderSchedule(ctx);
+    } catch (error) {
+      logger.error('Error setting schedule time:', error);
+      await ctx.editMessageText('❌ Error updating the schedule time.');
+    }
+  }
+
+  private async handleScheduleTimezone(ctx: MyContext) {
+    if (!(await this.requireAdminForCallback(ctx))) return;
+
+    const match = ctx.callbackQuery?.data?.match(/^schedule_tz_(-?\d+)$/);
+    if (!match) return;
+    if (!this.callbackChatIdMatches(ctx, parseInt(match[1], 10))) return;
+
+    await ctx.conversation.enter('setScheduleTimezone', { overwrite: true });
   }
 }
