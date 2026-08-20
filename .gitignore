@@ -29,3 +29,8 @@ logs/
 # Testing
 coverage/
 .nyc_output/
+
+# Local database backups (never commit exported message content)
+backups/
+*.jsonl
+*.jsonl.gz

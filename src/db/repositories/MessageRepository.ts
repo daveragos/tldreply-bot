@@ -174,4 +174,91 @@ export class MessageRepository extends BaseRepository {
     );
     return result.rows;
   }
+
+  /**
+   * Streams messages in batches, oldest first, for export.
+   *
+   * Uses keyset pagination on the primary key rather than OFFSET: the table is
+   * large, and OFFSET makes the database re-scan everything it already skipped.
+   * Yielding batches keeps memory flat regardless of table size.
+   *
+   * @param olderThanHours when set, only messages past this age
+   * @param batchSize      rows fetched per round trip
+   */
+  async *streamMessages(
+    olderThanHours?: number,
+    batchSize: number = 2000
+  ): AsyncGenerator<any[], void, undefined> {
+    let afterId = 0;
+
+    for (;;) {
+      const params: any[] = [afterId];
+      let where = 'id > $1';
+
+      if (olderThanHours !== undefined) {
+        where += ` AND timestamp < NOW() - (INTERVAL '1 hour' * $${params.length + 1})`;
+        params.push(olderThanHours);
+      }
+
+      params.push(batchSize);
+      const result = await this.db.query(
+        `SELECT * FROM messages WHERE ${where} ORDER BY id ASC LIMIT $${params.length}`,
+        params
+      );
+
+      if (result.rows.length === 0) return;
+
+      yield result.rows;
+      afterId = Number(result.rows[result.rows.length - 1].id);
+
+      if (result.rows.length < batchSize) return;
+    }
+  }
+
+  /** Total rows, optionally restricted to messages past a given age. */
+  async countMessages(olderThanHours?: number): Promise<number> {
+    if (olderThanHours === undefined) {
+      const all = await this.db.query('SELECT COUNT(*)::int AS count FROM messages', []);
+      return all.rows[0]?.count ?? 0;
+    }
+    return this.countMessagesOlderThan(olderThanHours);
+  }
+
+  /**
+   * Re-inserts an exported message.
+   *
+   * Distinct from insertMessage: restore must not overwrite a live row that
+   * has since been edited, so a conflict is left alone rather than updated.
+   * The original timestamp is preserved.
+   */
+  async restoreMessage(row: {
+    telegram_chat_id: number | string;
+    message_id: number | string;
+    user_id?: number | string | null;
+    username?: string | null;
+    first_name?: string | null;
+    content?: string | null;
+    is_bot?: boolean;
+    is_channel?: boolean;
+    timestamp?: string | Date;
+  }): Promise<boolean> {
+    const result = await this.db.query(
+      `INSERT INTO messages
+         (telegram_chat_id, message_id, user_id, username, first_name, content, is_bot, is_channel, timestamp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, CURRENT_TIMESTAMP))
+       ON CONFLICT (telegram_chat_id, message_id) DO NOTHING`,
+      [
+        row.telegram_chat_id,
+        row.message_id,
+        row.user_id ?? null,
+        row.username ?? null,
+        row.first_name ?? null,
+        row.content ?? null,
+        row.is_bot ?? false,
+        row.is_channel ?? false,
+        row.timestamp ?? null,
+      ]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
 }

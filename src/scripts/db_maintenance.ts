@@ -15,6 +15,8 @@
  */
 
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 import { Database } from '../db/database';
 import { config } from '../config';
 import { logger } from '../utils/logger';
@@ -67,6 +69,61 @@ async function showStats(db: Database, retentionHours: number): Promise<void> {
   console.log('');
 }
 
+/**
+ * Looks for an export that covers everything the purge would delete.
+ *
+ * Deleting raw messages is irreversible, so a purge refuses to run unless a
+ * backup manifest proves the data exists somewhere else first.
+ *
+ * @returns a reason to refuse, or null when a covering backup was found
+ */
+export function findCoveringBackup(outDir: string, retentionHours: number): string | null {
+  if (!fs.existsSync(outDir)) {
+    return `no backup directory at ${outDir}`;
+  }
+
+  const manifests = fs
+    .readdirSync(outDir)
+    .filter(f => f.endsWith('.manifest.json'))
+    .map(f => {
+      try {
+        return { file: f, data: JSON.parse(fs.readFileSync(path.join(outDir, f), 'utf8')) };
+      } catch {
+        return null;
+      }
+    })
+    .filter((m): m is { file: string; data: any } => m !== null)
+    .sort((a, b) => String(b.data.createdAt).localeCompare(String(a.data.createdAt)));
+
+  if (manifests.length === 0) {
+    return `no backup manifests found in ${outDir}`;
+  }
+
+  const latest = manifests[0];
+  const cutoff = new Date(Date.now() - retentionHours * 60 * 60 * 1000);
+  const newestBackedUp = latest.data.newestMessage ? new Date(latest.data.newestMessage) : null;
+
+  if (!newestBackedUp) {
+    return `${latest.file} does not record which messages it covers`;
+  }
+
+  // The backup must reach at least as far forward as the deletion cutoff.
+  if (newestBackedUp < cutoff) {
+    return (
+      `the newest backup (${latest.file}) only covers up to ` +
+      `${newestBackedUp.toISOString().slice(0, 16)} UTC, but the purge deletes everything ` +
+      `before ${cutoff.toISOString().slice(0, 16)} UTC`
+    );
+  }
+
+  console.log(`  Backup found: ${latest.file}`);
+  console.log(
+    `    ${Number(latest.data.messageCount).toLocaleString()} messages, ` +
+      `covers up to ${newestBackedUp.toISOString().slice(0, 16)} UTC`
+  );
+  return null;
+}
+
 async function purge(db: Database, retentionHours: number, compact: boolean): Promise<void> {
   const before = await db.getDatabaseSizeBytes();
   const stale = await db.messages.countMessagesOlderThan(retentionHours);
@@ -76,8 +133,29 @@ async function purge(db: Database, retentionHours: number, compact: boolean): Pr
     return;
   }
 
-  console.log(`\nDeleting ${stale.toLocaleString()} messages older than ${retentionHours}h...`);
-  console.log('These are NOT summarized first - run the bot for that. This is a raw purge.\n');
+  console.log(
+    `\nAbout to delete ${stale.toLocaleString()} messages older than ${retentionHours}h.`
+  );
+  console.log('This is a raw purge - messages are NOT summarized first.\n');
+
+  // A purge is irreversible, so require proof the data exists elsewhere.
+  if (hasFlag('skip-backup-check')) {
+    console.log('  ! Skipping the backup check (--skip-backup-check).\n');
+  } else {
+    const problem = findCoveringBackup(
+      path.resolve(arg('backup-dir') ?? './backups'),
+      retentionHours
+    );
+    if (problem) {
+      console.error(`\n  Refusing to purge: ${problem}.\n`);
+      console.error('  Export the messages first:');
+      console.error(`    npm run db:export -- --older-than ${retentionHours}`);
+      console.error('    npm run db:verify -- backups/<file>\n');
+      console.error('  Or pass --skip-backup-check to delete without a backup.\n');
+      process.exit(1);
+    }
+    console.log('');
+  }
 
   const deleted = await db.cleanupOldMessages(retentionHours, config.cleanupBatchSize);
   console.log(`  Deleted ${deleted.toLocaleString()} rows`);
@@ -143,4 +221,8 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+// Only run when invoked directly, so tests can import from this file without
+// the CLI executing (and exiting) on import.
+if (require.main === module) {
+  void main();
+}
