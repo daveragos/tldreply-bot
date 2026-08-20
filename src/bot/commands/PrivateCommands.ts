@@ -2,6 +2,7 @@ import { InlineKeyboard, NextFunction } from 'grammy';
 import { BaseCommand, MyContext } from './BaseCommand';
 import { setUpdateState } from '../../services/services';
 import { GeminiService } from '../../services/gemini';
+import { invalidateGeminiService } from '../../services/geminiPool';
 import { logger } from '../../utils/logger';
 
 export class PrivateCommands extends BaseCommand {
@@ -479,6 +480,7 @@ export class PrivateCommands extends BaseCommand {
         }
 
         const deleted = await this.db.deleteGroup(chatId);
+        invalidateGeminiService(chatId);
         if (deleted) {
           await ctx.reply(
             `✅ Group removed successfully!\n\n` +
@@ -592,6 +594,7 @@ export class PrivateCommands extends BaseCommand {
       }
 
       const deleted = await this.db.deleteGroup(chatId);
+      invalidateGeminiService(chatId);
       if (deleted) {
         await ctx.editMessageText(
           `✅ Group removed successfully!\n\n` +
@@ -716,13 +719,18 @@ export class PrivateCommands extends BaseCommand {
 
           try {
             const gemini = new GeminiService(validFormatKeys);
-            await gemini.summarizeMessages([
-              { content: 'test', timestamp: new Date().toISOString() },
-            ]);
+            try {
+              await gemini.summarizeMessages([
+                { content: 'test', timestamp: new Date().toISOString() },
+              ]);
+            } finally {
+              gemini.dispose();
+            }
 
             const serializedKeys = JSON.stringify(validFormatKeys);
             const encryptedKey = this.encryption.encrypt(serializedKeys);
             await this.db.updateGroupApiKey(chatId, encryptedKey);
+            invalidateGeminiService(chatId);
 
             let successMessage = `✅ <b>Success!</b> Updated ${validFormatKeys.length} API key(s).`;
             if (invalidFormatKeys.length > 0) {

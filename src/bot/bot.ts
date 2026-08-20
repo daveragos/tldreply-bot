@@ -9,6 +9,7 @@ import { logger } from '../utils/logger';
 import { CleanupService } from './services/CleanupService';
 import { SchedulerService } from './services/SchedulerService';
 import { config } from '../config';
+import { clearGeminiPool } from '../services/geminiPool';
 
 type MyContext = ConversationFlavor<Context>;
 
@@ -207,6 +208,7 @@ export class TLDRBot {
     this.stopping = true;
 
     this.stopBackgroundJobs();
+    clearGeminiPool();
     await this.bot.stop();
 
     // Let in-flight middleware finish before the caller closes the database.

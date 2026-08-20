@@ -4,12 +4,7 @@ import { getGeminiService } from '../../services/geminiPool';
 import { logger } from '../../utils/logger';
 import { markdownToHtml, splitMessage, escapeHtml } from '../../utils/formatter';
 import { config } from '../../config';
-import {
-  parseTLDRArgs,
-  parseTimeframe,
-  isCountBased,
-  parseCount,
-} from '../../utils/tldrArgs';
+import { parseTLDRArgs, parseTimeframe, isCountBased, parseCount } from '../../utils/tldrArgs';
 
 export class GroupCommands extends BaseCommand {
   private rateLimitMap = new Map<string, number>();

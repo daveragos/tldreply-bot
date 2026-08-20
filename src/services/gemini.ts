@@ -1,11 +1,13 @@
 import { GoogleGenAI } from '@google/genai';
 import { logger } from '../utils/logger';
+import { config } from '../config';
 
 export class GeminiService {
   private keys: string[];
   private currentKeyIndex: number = 0;
   private ais: GoogleGenAI[];
   private exhaustedKeys: Set<number> = new Set();
+  private invalidKeys: Set<number> = new Set();
   private exhaustionTimers: Map<number, NodeJS.Timeout> = new Map();
 
   constructor(apiKeyOrKeys: string | string[]) {
@@ -34,7 +36,10 @@ export class GeminiService {
     let attempts = 0;
 
     while (attempts < this.keys.length) {
-      if (!this.exhaustedKeys.has(this.currentKeyIndex)) {
+      if (
+        !this.exhaustedKeys.has(this.currentKeyIndex) &&
+        !this.invalidKeys.has(this.currentKeyIndex)
+      ) {
         return this.currentKeyIndex;
       }
       this.currentKeyIndex = (this.currentKeyIndex + 1) % this.keys.length;
@@ -65,18 +70,7 @@ export class GeminiService {
    * Generates content with automatic model fallback and key rotation
    */
   private async generateContentWithFallback(prompt: string): Promise<string> {
-    // Models found available for this key (no 1.5 versions available)
-    const models = [
-      'gemini-2.0-flash-001',
-      'gemini-2.5-flash',
-      'gemini-2.0-flash-lite-001',
-      'gemini-flash-latest',
-      'gemini-2.5-pro',
-      'gemini-1.5-flash',
-      'gemini-1.5-pro',
-      'gemini-2.0-flash-exp',
-      'gemini-2.0-flash-lite-preview-02-05',
-    ];
+    const models = config.geminiModels;
     const maxGlobalRetries = 3;
     let lastError: any;
 
@@ -110,7 +104,9 @@ export class GeminiService {
             // Critical Fix:
             // If we have multiple keys and valid ones remain, break to try next key with SAME model (via outer loop).
             // If we are out of keys (or only had one), continue to NEXT MODEL (fallback) with same key (or whatever key we get).
-            const hasOtherKeys = this.keys.some((_, i) => !this.exhaustedKeys.has(i));
+            const hasOtherKeys = this.keys.some(
+              (_, i) => !this.exhaustedKeys.has(i) && !this.invalidKeys.has(i)
+            );
 
             if (hasOtherKeys) {
               logger.warn(`Rotating to next available key...`);
@@ -131,10 +127,18 @@ export class GeminiService {
             continue; // Try next model
           }
 
-          // If auth error, maybe key is bad?
-          if (errorMessage.includes('API_KEY_INVALID')) {
+          // An invalid key will not become valid on the next model or the next
+          // retry. Fail fast unless another key is available to try instead.
+          if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('401')) {
             logger.error(`Invalid key at index ${keyIndex}`);
-            break;
+            this.invalidKeys.add(keyIndex);
+
+            const hasUsableKey = this.keys.some(
+              (_, i) => !this.invalidKeys.has(i) && !this.exhaustedKeys.has(i)
+            );
+            if (!hasUsableKey) throw error;
+
+            break; // try the next key
           }
 
           throw error; // Throw other errors immediately

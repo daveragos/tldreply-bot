@@ -45,4 +45,20 @@ export const config = {
 
   /** Fraction of the soft limit at which cleanup starts shortening the retention window. */
   databasePressureRatio: 0.85,
+
+  /**
+   * Models tried in order, first match wins.
+   *
+   * Kept short deliberately: every entry is a round trip when the one before
+   * it fails, so a long list turns one bad key into a long wait. Flash models
+   * come first because they are what the Gemini free tier affords.
+   *
+   * Override with a comma-separated GEMINI_MODELS if a key has different access.
+   */
+  geminiModels: (
+    process.env.GEMINI_MODELS ?? 'gemini-2.5-flash,gemini-2.0-flash-001,gemini-2.0-flash-lite-001'
+  )
+    .split(',')
+    .map(m => m.trim())
+    .filter(Boolean),
 } as const;

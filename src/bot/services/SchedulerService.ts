@@ -1,7 +1,7 @@
 import { Bot } from 'grammy';
 import { Database } from '../../db/database';
 import { EncryptionService } from '../../utils/encryption';
-import { GeminiService } from '../../services/gemini';
+import { getGeminiService } from '../../services/geminiPool';
 import { logger } from '../../utils/logger';
 import { markdownToHtml, splitMessage } from '../../utils/formatter';
 import { MyContext } from '../commands/BaseCommand';
@@ -160,8 +160,7 @@ export class SchedulerService {
         messageId: msg.message_id,
       }));
 
-      const decryptedKey = this.encryption.decrypt(group.gemini_api_key_encrypted);
-      const gemini = new GeminiService(decryptedKey);
+      const gemini = getGeminiService(chatId, group.gemini_api_key_encrypted, this.encryption);
       const summary = await gemini.summarizeMessages(formattedMessages, {
         customPrompt: settings.custom_prompt,
         summaryStyle: settings.summary_style,

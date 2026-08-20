@@ -2,6 +2,7 @@ import { Context } from 'grammy';
 import { logger } from '../utils/logger';
 import { Conversation, ConversationFlavor } from '@grammyjs/conversations';
 import { GeminiService } from '../services/gemini';
+import { invalidateGeminiService } from '../services/geminiPool';
 import {
   db,
   encryption,
@@ -92,8 +93,14 @@ export async function setupApiKey(
 
   // Test the API keys
   try {
+    // Not pooled: these keys are not saved yet, and the throwaway client must
+    // dispose so its quota-recovery timers do not outlive the check.
     const gemini = new GeminiService(validFormatKeys);
-    await gemini.summarizeMessages([{ content: 'test', timestamp: new Date().toISOString() }]);
+    try {
+      await gemini.summarizeMessages([{ content: 'test', timestamp: new Date().toISOString() }]);
+    } finally {
+      gemini.dispose();
+    }
 
     // If successful, save the encrypted key(s)
     if (!encryption || !db) {
@@ -132,6 +139,7 @@ export async function setupApiKey(
     const serializedKeys = JSON.stringify(validFormatKeys);
     const encryptedKey = encryption.encrypt(serializedKeys);
     await db.updateGroupApiKey(groupChatId, encryptedKey);
+    invalidateGeminiService(groupChatId);
 
     let successMessage = `✅ Successfully configured ${validFormatKeys.length} API key(s)! You can now use /tldr in your group.`;
     if (invalidFormatKeys.length > 0) {
@@ -265,7 +273,11 @@ async function validateAndUpdateApiKey(
     );
     // Pass all valid keys to service
     const gemini = new GeminiService(validFormatKeys);
-    await gemini.summarizeMessages([{ content: 'test', timestamp: new Date().toISOString() }]);
+    try {
+      await gemini.summarizeMessages([{ content: 'test', timestamp: new Date().toISOString() }]);
+    } finally {
+      gemini.dispose();
+    }
     logger.info(`validateAndUpdateApiKey: API key test successful for group ${groupChatId}`);
   } catch (error: any) {
     // If it's a quota error or simple test failure, we might still want to save valid-formatted keys
@@ -311,6 +323,7 @@ async function validateAndUpdateApiKey(
     logger.info(`validateAndUpdateApiKey: Encrypting and saving ${validFormatKeys.length} keys`);
     const encryptedKey = encryption.encrypt(serializedKeys);
     await db.updateGroupApiKey(groupChatId, encryptedKey);
+    invalidateGeminiService(groupChatId);
     logger.info(`validateAndUpdateApiKey: API keys successfully saved for group ${groupChatId}`);
 
     let successMessage = `✅ <b>Success!</b> Updated ${validFormatKeys.length} API key(s).`;
