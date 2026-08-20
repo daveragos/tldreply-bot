@@ -11,7 +11,11 @@ pipeline {
 
     environment {
         // FIX: REMOVED the problematic PATH update.
-        PM2_APP_NAME = "trlreply-bot"
+        // Must match the name in ecosystem.config.js.
+        PM2_APP_NAME = "tldreply-bot"
+        // Previous deployments ran under a misspelled name; removed on deploy so
+        // two instances never poll Telegram at the same time.
+        PM2_LEGACY_APP_NAME = "trlreply-bot"
         // Load secrets from Jenkins credentials
         TELEGRAM_TOKEN = credentials('telegram-token')
         DATABASE_URL = credentials('database-url')
@@ -43,6 +47,12 @@ pipeline {
                         sh 'npm run format:check'
                     }
                 }
+                stage('Unit Tests') {
+                    steps {
+                        echo '🧪 Running tests...';
+                        sh 'npm test'
+                    }
+                }
             }
         }
 
@@ -62,15 +72,18 @@ pipeline {
                 echo "☁️ Deploying from new"
 
                 sh '''
-                    if pm2 describe $PM2_APP_NAME > /dev/null 2>&1; then
-                        echo "App $PM2_APP_NAME is running. Deleting..."
-                        pm2 delete $PM2_APP_NAME
-                    else
-                        echo "App $PM2_APP_NAME is not running."
-                    fi
+                    for app in $PM2_APP_NAME $PM2_LEGACY_APP_NAME; do
+                        if pm2 describe "$app" > /dev/null 2>&1; then
+                            echo "App $app is running. Deleting..."
+                            pm2 delete "$app"
+                        else
+                            echo "App $app is not running."
+                        fi
+                    done
                 '''
-                // Ensure production env for runtime and pass secrets
-                sh "NODE_ENV=production TELEGRAM_TOKEN=$TELEGRAM_TOKEN DATABASE_URL=$DATABASE_URL ENCRYPTION_SECRET=$ENCRYPTION_SECRET pm2 start dist/index.js --name $PM2_APP_NAME"
+                // Start via ecosystem.config.js so max_memory_restart and the log
+                // paths defined there actually apply. Secrets stay in the env.
+                sh "NODE_ENV=production TELEGRAM_TOKEN=$TELEGRAM_TOKEN DATABASE_URL=$DATABASE_URL ENCRYPTION_SECRET=$ENCRYPTION_SECRET pm2 start ecosystem.config.js --env production"
                 sh 'pm2 save'
                 sh 'pm2 list'
             }

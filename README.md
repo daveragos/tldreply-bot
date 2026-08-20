@@ -8,7 +8,8 @@ A Telegram bot that summarizes group chat conversations using Google's Gemini AI
 - ⏰ **Time-Based**: Summarize the last hour, 6 hours, day, or week (max 7 days)
 - 💬 **Reply to Summarize**: Reply to any message to summarize from that point
 - 📅 **Auto-Summarization**: Messages are automatically summarized before deletion (48 hours)
-- 📚 **Summary History**: Summaries are kept for 2 weeks before permanent deletion
+- 📚 **Summary History**: Read archived summaries with `/history`, kept for 2 weeks
+- 🗄️ **Beyond Retention**: Long `/tldr` ranges are answered from the archive once the raw messages are gone
 - 🔒 **Per-Group API Keys**: Each group uses its own Gemini API key
 - 🔐 **Encrypted Storage**: API keys are encrypted at rest
 - ⚙️ **Customizable**: Customize summary style, filters, and scheduled summaries
@@ -49,13 +50,23 @@ DATABASE_URL=postgresql://user:password@host:port/database
 ENCRYPTION_SECRET=your_random_secret_min_32_chars
 ```
 
-5. Set up the database:
+5. Optional tuning (see `env.example` for the full list):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MESSAGE_RETENTION_HOURS` | `48` | How long raw messages are cached. Quoted to users in the privacy notice. |
+| `SUMMARY_RETENTION_DAYS` | `14` | How long archived summaries are kept. |
+| `MESSAGE_MAX_CHARS` | `2000` | Stored characters per message — the biggest lever on database size. |
+| `DATABASE_SOFT_LIMIT_MB` | `500` | Your plan's size cap. Retention halves past 85% of it. |
+| `GEMINI_MODELS` | flash models | Models to try, in order. |
+
+6. Set up the database:
 ```bash
 # Connect to your PostgreSQL database and run:
 psql $DATABASE_URL < src/db/schema.sql
 ```
 
-6. Run the bot:
+7. Run the bot:
 ```bash
 # Development
 npm run dev
@@ -106,13 +117,14 @@ If you prefer the manual method, you can still use `/setup_group <chat_id>` in p
 - `/setup` - Start group setup (easiest method - auto-detects chat ID!)
 - `/tldr [range] [@user] [style] [topic]` - Get summary with the **Standard Command Rule**
 - `Reply to message` + `/tldr` - Summarize from that message to now
+- `/history` - List archived summaries (`/history 2` reads one in full)
 - `/tldr_info` - Show group configuration and status
 - `/tldr_help` or `/help` - Show help for group commands
 - `/tldr_settings` - Manage summary settings (admin only)
   - Customize summary style (default, detailed, brief, bullet, timeline)
-  - Set custom prompts
+  - Set a custom prompt
   - Configure message filtering
-  - Set up scheduled summaries
+  - Set up scheduled summaries, including time and timezone
 - `/schedule` - Set up automatic daily/weekly summaries (admin only)
 - `/filter` - Configure message filtering (admin only)
   - Exclude bot messages
@@ -132,7 +144,13 @@ If you prefer the manual method, you can still use `/setup_group <chat_id>` in p
 /tldr week    # Summarize last week
 /tldr 3d      # Summarize last 3 days (max 7 days)
 /tldr 30h     # Summarize last 30 hours
+/tldr 3 days  # Multi-word ranges work too
+/tldr 2 weeks # Clamped to the 7 day maximum
 ```
+
+Ranges reaching past the 48-hour retention window are answered from archived
+summaries. If no archive covers that period yet, the reply says so rather than
+silently returning a shorter range.
 
 **Count-based summaries:**
 ```bash
@@ -179,9 +197,13 @@ This summarizes from that message to now
 **🔒 Important Privacy Information:**
 
 - Messages are temporarily cached in the database to enable historical summaries
-- **Automatic deletion**: All cached messages are deleted after 48 hours
-- **No permanent storage**: The bot never stores messages permanently
-- **API keys**: Your Gemini API keys are encrypted at rest using AES-256
+- **Automatic deletion**: All cached messages are deleted after 48 hours (configurable
+  via `MESSAGE_RETENTION_HOURS`). Cleanup runs every 6 hours.
+- **Summaries outlive messages**: Before deletion, messages are summarized and that
+  summary is kept for 2 weeks so `/history` and long `/tldr` ranges still work. The
+  original message text is gone; only the summary remains.
+- **No permanent storage**: The bot never stores raw messages permanently
+- **API keys**: Your Gemini API keys are encrypted at rest with AES-256-GCM
 - **Bot privacy mode**: Make sure to disable privacy mode via @BotFather (`/setprivacy`) so the bot can read all messages in the group
 
 The bot only stores messages it receives after being added to a group. It cannot access messages sent before it joined.
@@ -203,71 +225,67 @@ The bot only stores messages it receives after being added to a group. It cannot
 - Supabase (free PostgreSQL tier)
 - Google Gemini (free AI tier)
 
-## Deploy to VPS with GitHub Actions
+## Deploy to a VPS with Jenkins
 
-This project includes a GitHub Actions workflow for automated deployment to a VPS server.
+Deployment runs through the `Jenkinsfile` in this repository.
 
 ### Prerequisites
 
-- A VPS server with SSH access
-- Node.js and PM2 installed on the VPS
-- The project directory `/var/www/tldreply` (will be created automatically)
+- A VPS with Node.js 22 and PM2 installed
+- A Jenkins instance with the NodeJS plugin, configured with a `node22` tool
+- These Jenkins credentials: `telegram-token`, `database-url`, `encryption-secret`
 
-### Setup
+### Pipeline stages
 
-1. **Configure GitHub Secrets:**
-   Go to your repository → Settings → Secrets and variables → Actions → New repository secret
+1. `npm ci`
+2. Lint, format check and unit tests, in parallel
+3. `npm run build`
+4. Restart under PM2 via `ecosystem.config.js`
 
-   Add the following secrets:
-   - `VPS_HOST`: Your VPS IP address (e.g., `111.xxx.x.x`)
-   - `VPS_USERNAME`: Your VPS username (e.g., `username`)
-   - `VPS_PASSWORD`: Your VPS password
+The deploy step removes any existing process before starting a new one, so two
+instances never poll Telegram simultaneously.
 
-2. **Initial VPS Setup:**
-   SSH into your VPS and run:
-   ```bash
-   # Install Node.js (if not already installed)
-   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-   sudo apt-get install -y nodejs
+## Database maintenance
 
-   # Install PM2 globally
-   sudo npm install -g pm2
+The bot is designed to run on a free-tier Postgres, where the size cap is a real
+ceiling. Two commands help when it gets tight:
 
-   # Create project directory (if needed)
-   sudo mkdir -p /var/www/tldreply
-   sudo chown -R $USER:$USER /var/www/tldreply
-   ```
+```bash
+npm run db:stats
+```
 
-3. **Configure Environment Variables:**
-   On your VPS, create a `.env` file in `/var/www/tldreply`:
-   ```bash
-   cd /var/www/tldreply
-   cp env.example .env
-   nano .env  # Edit with your actual values
-   ```
+Shows total size against `DATABASE_SOFT_LIMIT_MB`, a per-table breakdown, and
+how many messages are past the retention window.
 
-4. **Deploy:**
-   - Push to the `main` branch to trigger automatic deployment
-   - Or manually trigger via GitHub Actions → Deploy to VPS → Run workflow
+```bash
+npm run db:purge
+```
 
-The workflow will:
-- Build the TypeScript project
-- Deploy to `/var/www/tldreply` on your VPS
-- Install production dependencies
-- Restart the PM2 process automatically
+Deletes messages past the retention window. Note that a plain `DELETE` in
+Postgres frees space for reuse but does not shrink the file on disk. To reclaim
+it fully:
 
-**Note:** Make sure your VPS user has sudo access and password authentication is enabled for SSH (or configure SSH keys for better security).
+```bash
+npm run db:purge -- --compact
+```
+
+That runs `VACUUM FULL`, which takes an exclusive lock and needs temporary room
+for a table rewrite. The bot also vacuums automatically after each cleanup run,
+and shortens its retention window when usage passes 85% of the soft limit.
 
 ## Architecture
 
 - **Bot Framework**: grammY
 - **AI**: Google Gemini
 - **Database**: PostgreSQL
-- **Encryption**: AES-256-CBC with PBKDF2 key derivation
+- **Encryption**: AES-256-GCM with PBKDF2 key derivation
+- **Tests**: `node:test` (no test framework dependency)
 
 ## Security
 
-- **API keys**: Encrypted using AES-256-CBC with PBKDF2 key derivation
+- **API keys**: Encrypted using AES-256-GCM with PBKDF2 key derivation and a random
+  per-record salt. GCM authenticates the ciphertext, so tampering is detected rather
+  than silently producing garbage.
 - **Isolated keys**: Each group uses its own isolated API key
 - **No plain text**: API keys are never stored in plain text
 - **SSL connections**: All database connections use SSL in production
@@ -277,6 +295,17 @@ The workflow will:
   - Example: A message like `"'; DROP TABLE messages; --"` will be stored as text, not executed
 - **Input Validation**: Timeframe inputs are validated and limited (max 7 days)
 - **Rate Limiting**: Commands are rate-limited to prevent abuse
+- **Admin-only settings**: Every settings button re-verifies admin status, not just the
+  command that opened the menu
+
+## Testing
+
+```bash
+npm test
+```
+
+Unit tests cover the pure functions — `/tldr` argument parsing, timeframe handling,
+topic validation and encryption. They need no database and no network.
 
 ## Contributing
 
