@@ -18,6 +18,16 @@ function intFromEnv(name: string, fallback: number, min: number, max: number): n
 
 export const config = {
   /**
+   * When true the process starts, stays alive, and does nothing else: no
+   * polling, no background jobs.
+   *
+   * For platforms with no stop button. Set MAINTENANCE_MODE=true, redeploy,
+   * do the database work, then unset and redeploy. The container stays up so
+   * the platform does not treat it as a crash loop.
+   */
+  maintenanceMode: process.env.MAINTENANCE_MODE === 'true',
+
+  /**
    * How long raw messages stay cached before being summarized and deleted.
    * This is the number quoted to users in the privacy notice, so changing it
    * means changing the README and the /tldr_info text with it.

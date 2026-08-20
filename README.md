@@ -61,6 +61,7 @@ ENCRYPTION_SECRET=your_random_secret_min_32_chars
 | `GEMINI_MODELS` | flash models | Models to try, in order. |
 | `PORT` | unset | When set, serves an HTTP health endpoint. Needed only if your host health checks over HTTP. |
 | `LOG_TO_FILE` | `false` | Write rotating log files. Only useful with persistent disk. |
+| `MAINTENANCE_MODE` | `false` | Start but do not poll or run jobs. For database work on hosts with no stop button. |
 
 6. Set up the database:
 ```bash
@@ -276,6 +277,16 @@ bind it and serve:
 | `/health` | Readiness — includes a database round trip and usage stats |
 
 Without `PORT`, no socket is opened.
+
+## Taking the bot offline
+
+Hosts without a stop button can use the maintenance switch. Set
+`MAINTENANCE_MODE=true` and redeploy: the process starts, connects, and then
+idles — no polling, no background jobs — so the platform sees a healthy
+container rather than a crash loop. Unset it and redeploy to resume.
+
+Use it before a `VACUUM FULL`, which briefly takes an exclusive lock on the
+messages table.
 
 ## Database maintenance
 

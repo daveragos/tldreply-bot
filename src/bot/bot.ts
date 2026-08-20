@@ -32,6 +32,7 @@ export class TLDRBot {
   private timers: NodeJS.Timeout[] = [];
   private pollingPromise: Promise<void> | null = null;
   private stopping = false;
+  private maintenanceHeartbeat: NodeJS.Timeout | null = null;
 
   constructor(telegramToken: string, db: Database, encryption: EncryptionService) {
     this.db = db;
@@ -101,6 +102,19 @@ export class TLDRBot {
   }
 
   async start(): Promise<void> {
+    if (config.maintenanceMode) {
+      logger.warn('🔧 MAINTENANCE_MODE is on: not polling, no background jobs.');
+      logger.warn('   The bot will not respond to any command until it is unset.');
+
+      // Keep the event loop alive so the platform sees a healthy long-running
+      // process rather than a container that exited.
+      this.maintenanceHeartbeat = setInterval(
+        () => logger.info('🔧 Idle in maintenance mode'),
+        15 * 60 * 1000
+      );
+      return;
+    }
+
     logger.info('🔄 Starting bot connection...');
 
     // Background jobs are registered BEFORE polling starts. `bot.start()` runs the
@@ -215,9 +229,18 @@ export class TLDRBot {
     if (this.stopping) return;
     this.stopping = true;
 
+    if (this.maintenanceHeartbeat) {
+      clearInterval(this.maintenanceHeartbeat);
+      this.maintenanceHeartbeat = null;
+    }
+
     this.stopBackgroundJobs();
     clearGeminiPool();
-    await this.bot.stop();
+
+    // Nothing to stop if polling never started.
+    if (!config.maintenanceMode) {
+      await this.bot.stop();
+    }
 
     // Let in-flight middleware finish before the caller closes the database.
     if (this.pollingPromise) {
