@@ -16,6 +16,34 @@ type MyContext = ConversationFlavor<Context>;
 
 type MyConversationContext = Context;
 
+/**
+ * Waits for a text message from one specific user, ignoring everyone else.
+ *
+ * A conversation in a group consumes the next matching update in that chat,
+ * regardless of who sent it. Without this, any member could answer a prompt
+ * that only an admin was authorised to open - supplying the group's custom
+ * summarization prompt, its schedule timezone, or its excluded-user list.
+ *
+ * Messages from other users are skipped rather than rejected, so ordinary
+ * group chatter during the exchange is simply ignored.
+ */
+async function waitForTextFrom(conversation: Conversation<MyContext>, userId: number) {
+  for (;;) {
+    const next = await conversation.waitFor('message:text');
+    if (next.from?.id === userId) return next;
+  }
+}
+
+/**
+ * Same, but returns the whole update so callers can inspect reply_to_message.
+ */
+async function waitForMessageFrom(conversation: Conversation<MyContext>, userId: number) {
+  for (;;) {
+    const next = await conversation.wait();
+    if (next.from?.id === userId) return next;
+  }
+}
+
 export async function setupApiKey(
   conversation: Conversation<MyContext>,
   ctx: MyConversationContext
@@ -427,6 +455,13 @@ export async function excludeUsers(
   // Get chat ID from context
   const groupChatId = chat.id;
 
+  // Only the admin who opened this may answer it.
+  const initiatorId = ctx.from?.id;
+  if (!initiatorId) {
+    await ctx.reply('❌ Could not identify who started this.');
+    return;
+  }
+
   if (!db) {
     await ctx.reply('❌ Database service not available.');
     return;
@@ -444,7 +479,7 @@ export async function excludeUsers(
     { parse_mode: 'HTML' }
   );
 
-  const inputCtx = await conversation.wait();
+  const inputCtx = await waitForMessageFrom(conversation, initiatorId);
 
   // Check if user sent /cancel
   if (inputCtx.message?.text?.toLowerCase() === '/cancel') {
@@ -566,6 +601,12 @@ export async function setCustomPrompt(
 
   const groupChatId = chat.id;
 
+  const initiatorId = ctx.from?.id;
+  if (!initiatorId) {
+    await ctx.reply('❌ Could not identify who started this.');
+    return;
+  }
+
   await ctx.reply(
     '🔧 <b>Custom Prompt</b>\n\n' +
       'Send the instructions you want the AI to follow when summarizing this group.\n\n' +
@@ -577,7 +618,7 @@ export async function setCustomPrompt(
     { parse_mode: 'HTML' }
   );
 
-  const inputCtx = await conversation.waitFor('message:text');
+  const inputCtx = await waitForTextFrom(conversation, initiatorId);
   const text = inputCtx.message.text.trim();
 
   if (text.toLowerCase() === '/cancel') {
@@ -630,6 +671,12 @@ export async function setScheduleTimezone(
     return;
   }
 
+  const initiatorId = ctx.from?.id;
+  if (!initiatorId) {
+    await ctx.reply('❌ Could not identify who started this.');
+    return;
+  }
+
   await ctx.reply(
     '🌍 <b>Schedule Timezone</b>\n\n' +
       'Send your timezone name, for example:\n' +
@@ -641,7 +688,7 @@ export async function setScheduleTimezone(
     { parse_mode: 'HTML' }
   );
 
-  const inputCtx = await conversation.waitFor('message:text');
+  const inputCtx = await waitForTextFrom(conversation, initiatorId);
   const input = inputCtx.message.text.trim();
 
   if (input.toLowerCase() === '/cancel') {
