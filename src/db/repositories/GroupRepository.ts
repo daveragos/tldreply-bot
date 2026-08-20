@@ -12,6 +12,9 @@ export class GroupRepository extends BaseRepository {
        WHERE groups.gemini_api_key_encrypted IS NULL`,
       [chatId, userId]
     );
+    // getGroup caches misses, so a "no such group" entry from before /setup
+    // would otherwise suppress message caching until the TTL expired.
+    invalidateGroupCache(chatId);
   }
 
   async getGroup(chatId: number): Promise<any> {
@@ -111,6 +114,7 @@ export class GroupRepository extends BaseRepository {
       `INSERT INTO group_settings (telegram_chat_id) VALUES ($1) ON CONFLICT (telegram_chat_id) DO NOTHING`,
       [chatId]
     );
+    invalidateGroupCache(chatId);
   }
 
   async updateGroupSettings(
