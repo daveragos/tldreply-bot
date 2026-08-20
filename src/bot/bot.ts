@@ -11,6 +11,11 @@ import { SchedulerService } from './services/SchedulerService';
 
 type MyContext = ConversationFlavor<Context>;
 
+/** How often to summarize-and-purge messages past the retention window. */
+const CLEANUP_INTERVAL_HOURS = 6;
+/** How long generated summaries are kept before deletion. */
+const SUMMARY_RETENTION_DAYS = 14;
+
 export class TLDRBot {
   private bot: Bot<MyContext>;
   private db: Database;
@@ -18,10 +23,9 @@ export class TLDRBot {
   private cleanupService: CleanupService;
   private schedulerService: SchedulerService;
 
-  private cleanupInterval: NodeJS.Timeout | null = null;
-  private summaryCleanupInterval: NodeJS.Timeout | null = null;
-  private scheduledSummaryInterval: NodeJS.Timeout | null = null;
-  private groupCleanupInterval: NodeJS.Timeout | null = null;
+  private timers: NodeJS.Timeout[] = [];
+  private pollingPromise: Promise<void> | null = null;
+  private stopping = false;
 
   constructor(telegramToken: string, db: Database, encryption: EncryptionService) {
     this.db = db;
@@ -88,118 +92,129 @@ export class TLDRBot {
     logger.info('🤖 TLDR Bot initialized');
   }
 
-  async start() {
-    try {
-      logger.info('🔄 Starting bot connection...');
-      await this.bot.start();
-      logger.info('✅ Bot is running!');
-    } catch (error) {
-      logger.error('❌ Failed to start bot:', error);
-      if (error instanceof Error) {
-        logger.error('Error details:', {
-          message: error.message,
-          stack: error.stack,
-          name: error.name,
-        });
-      }
-      throw error; // Re-throw to let caller handle it
+  async start(): Promise<void> {
+    logger.info('🔄 Starting bot connection...');
+
+    // Background jobs are registered BEFORE polling starts. `bot.start()` runs the
+    // long-polling loop and its promise only settles once the bot stops, so anything
+    // sequenced after an `await` on it would never execute while the bot is alive.
+    this.startBackgroundJobs();
+
+    return new Promise<void>((resolve, reject) => {
+      let started = false;
+
+      this.pollingPromise = this.bot.start({
+        onStart: info => {
+          started = true;
+          logger.info(`✅ Bot is running as @${info.username}`);
+          resolve();
+        },
+      });
+
+      this.pollingPromise.then(
+        () => {
+          // Resolves when polling stops. Expected during shutdown, fatal otherwise.
+          if (!this.stopping) {
+            logger.error('❌ Long polling stopped unexpectedly');
+            this.stopBackgroundJobs();
+          }
+        },
+        error => {
+          logger.error('❌ Long polling failed:', error);
+          this.stopBackgroundJobs();
+          if (started) {
+            // Already reported success to the caller; nothing left to reject.
+            // Exit so the process manager restarts us.
+            process.exit(1);
+          } else {
+            reject(error);
+          }
+        }
+      );
+    });
+  }
+
+  /**
+   * Registers every recurring maintenance job. Safe to call once per start().
+   */
+  private startBackgroundJobs(): void {
+    const HOUR = 60 * 60 * 1000;
+
+    // Summarize and delete messages past the retention window.
+    this.every(CLEANUP_INTERVAL_HOURS * HOUR, 'message cleanup', () =>
+      this.cleanupService.summarizeAndCleanupOldMessages()
+    );
+
+    // Delete stored summaries older than the summary retention window.
+    this.every(24 * HOUR, 'summary cleanup', () =>
+      this.db.cleanupOldSummaries(SUMMARY_RETENTION_DAYS)
+    );
+
+    // Fire due scheduled summaries.
+    this.every(HOUR, 'scheduled summaries', () =>
+      this.schedulerService.checkAndRunScheduledSummaries()
+    );
+
+    // Drop groups the bot is no longer a member of.
+    this.every(24 * HOUR, 'orphaned group cleanup', () =>
+      this.cleanupService.checkAndCleanupOrphanedGroups()
+    );
+
+    // Expire abandoned /update_api_key state.
+    this.every(HOUR, 'update-state sweep', async () => clearExpiredState());
+
+    // Staggered first runs so startup is not competing with itself.
+    this.after(2 * 60 * 1000, 'initial message cleanup', () =>
+      this.cleanupService.summarizeAndCleanupOldMessages()
+    );
+    this.after(5 * 60 * 1000, 'initial scheduled summary check', () =>
+      this.schedulerService.checkAndRunScheduledSummaries()
+    );
+    this.after(10 * 60 * 1000, 'initial group cleanup', () =>
+      this.cleanupService.checkAndCleanupOrphanedGroups()
+    );
+
+    logger.info(`🕒 ${this.timers.length} background jobs registered`);
+  }
+
+  private stopBackgroundJobs(): void {
+    for (const timer of this.timers) {
+      clearInterval(timer);
+      clearTimeout(timer);
     }
+    this.timers = [];
+  }
 
-    // Run cleanup every 12 hours (summarize and delete messages older than 48 hours)
-    this.cleanupInterval = setInterval(
-      async () => {
-        try {
-          await this.cleanupService.summarizeAndCleanupOldMessages();
-        } catch (error) {
-          logger.error('Error during message cleanup:', error);
-        }
-      },
-      12 * 60 * 60 * 1000
-    );
-
-    // Run summary cleanup every 24 hours (delete summaries older than 2 weeks)
-    this.summaryCleanupInterval = setInterval(
-      async () => {
-        try {
-          await this.db.cleanupOldSummaries(14); // 14 days = 2 weeks
-        } catch (error) {
-          logger.error('Error during summary cleanup:', error);
-        }
-      },
-      24 * 60 * 60 * 1000
-    );
-
-    // Check for scheduled summaries every hour
-    this.scheduledSummaryInterval = setInterval(
-      async () => {
-        try {
-          await this.schedulerService.checkAndRunScheduledSummaries();
-        } catch (error) {
-          logger.error('Error checking scheduled summaries:', error);
-        }
-      },
-      60 * 60 * 1000
-    ); // Check every hour
-
-    // Run initial check after 5 minutes
-    setTimeout(
-      async () => {
-        try {
-          await this.schedulerService.checkAndRunScheduledSummaries();
-        } catch (error) {
-          logger.error('Error in initial scheduled summary check:', error);
-        }
-      },
-      5 * 60 * 1000
-    );
-
-    // Periodic job to check if bot is still in groups (every 24 hours)
-    this.groupCleanupInterval = setInterval(
-      async () => {
-        try {
-          await this.cleanupService.checkAndCleanupOrphanedGroups();
-        } catch (error) {
-          logger.error('Error during group cleanup check:', error);
-        }
-      },
-      24 * 60 * 60 * 1000
-    );
-
-    // Run initial check after 10 minutes
-    setTimeout(
-      async () => {
-        try {
-          await this.cleanupService.checkAndCleanupOrphanedGroups();
-        } catch (error) {
-          logger.error('Error in initial group cleanup check:', error);
-        }
-      },
-      10 * 60 * 1000
-    );
-
-    // Periodic cleanup of expired update state (every hour)
-    setInterval(
-      () => {
-        clearExpiredState();
-      },
-      60 * 60 * 1000
+  /** Runs `task` on an interval, never letting a rejection escape. */
+  private every(ms: number, label: string, task: () => Promise<unknown>): void {
+    this.timers.push(
+      setInterval(() => {
+        void task().catch(error => logger.error(`Error during ${label}:`, error));
+      }, ms)
     );
   }
 
-  async stop() {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-    }
-    if (this.summaryCleanupInterval) {
-      clearInterval(this.summaryCleanupInterval);
-    }
-    if (this.scheduledSummaryInterval) {
-      clearInterval(this.scheduledSummaryInterval);
-    }
-    if (this.groupCleanupInterval) {
-      clearInterval(this.groupCleanupInterval);
-    }
+  /** Runs `task` once after a delay, never letting a rejection escape. */
+  private after(ms: number, label: string, task: () => Promise<unknown>): void {
+    this.timers.push(
+      setTimeout(() => {
+        void task().catch(error => logger.error(`Error during ${label}:`, error));
+      }, ms)
+    );
+  }
+
+  async stop(): Promise<void> {
+    if (this.stopping) return;
+    this.stopping = true;
+
+    this.stopBackgroundJobs();
     await this.bot.stop();
+
+    // Let in-flight middleware finish before the caller closes the database.
+    if (this.pollingPromise) {
+      await this.pollingPromise.catch(() => undefined);
+    }
+
     logger.info('⏹️ Bot stopped');
   }
 

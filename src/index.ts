@@ -44,6 +44,27 @@ async function main() {
   // Initialize bot
   const bot = new TLDRBot(TELEGRAM_TOKEN, db, encryption);
 
+  // Register shutdown handlers before starting: bot.start() does not return until
+  // the bot stops, so anything registered after it would never be installed.
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info(`📴 Received ${signal}, shutting down...`);
+    try {
+      await bot.stop();
+      await db.close();
+      logger.info('👋 Shutdown complete');
+      process.exit(0);
+    } catch (error) {
+      logger.error('Error during shutdown:', error);
+      process.exit(1);
+    }
+  };
+
+  process.once('SIGINT', () => void shutdown('SIGINT'));
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+
   // Start bot
   try {
     logger.info('🔄 Attempting to start bot...');
@@ -70,10 +91,6 @@ async function main() {
     }
     throw error; // Re-throw to exit with error code
   }
-
-  // Graceful shutdown
-  process.once('SIGINT', () => bot.stop());
-  process.once('SIGTERM', () => bot.stop());
 }
 
 main().catch(error => {
