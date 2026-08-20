@@ -207,6 +207,9 @@ This summarizes from that message to now
   original message text is gone; only the summary remains.
 - **No permanent storage**: The bot never stores raw messages permanently
 - **API keys**: Your Gemini API keys are encrypted at rest with AES-256-GCM
+- **Pasted keys are deleted**: the message you paste your key into is removed from
+  the chat once received, so it does not sit in your Telegram history. If deletion
+  fails, the bot says so and asks you to delete it yourself.
 - **Bot privacy mode**: Make sure to disable privacy mode via @BotFather (`/setprivacy`) so the bot can read all messages in the group
 
 The bot only stores messages it receives after being added to a group. It cannot access messages sent before it joined.

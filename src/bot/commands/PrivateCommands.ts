@@ -5,6 +5,11 @@ import { GeminiService } from '../../services/gemini';
 import { invalidateGeminiService } from '../../services/geminiPool';
 import { logger } from '../../utils/logger';
 import { escapeHtml } from '../../utils/formatter';
+import {
+  deleteSecretMessage,
+  secretDeletionNotice,
+  warnIfSecretRemains,
+} from '../../utils/telegram';
 
 export class PrivateCommands extends BaseCommand {
   register() {
@@ -699,6 +704,15 @@ export class PrivateCommands extends BaseCommand {
         }
 
         if (args.length >= 3) {
+          // The key is in the command message itself. Remove it before doing
+          // anything else, so it does not linger while validation runs.
+          const keyMessageDeleted = await deleteSecretMessage(
+            ctx.api,
+            chat.id,
+            ctx.message?.message_id
+          );
+          await warnIfSecretRemains(ctx.api, chat.id, keyMessageDeleted);
+
           const apiKeysInput = args.slice(2).join(' ').trim();
           const rawKeys = apiKeysInput
             .split(/[\n, ]/)
@@ -747,6 +761,7 @@ export class PrivateCommands extends BaseCommand {
             if (invalidFormatKeys.length > 0) {
               successMessage += `\n\n⚠️ ${invalidFormatKeys.length} keys were skipped due to invalid format.`;
             }
+            successMessage += secretDeletionNotice(keyMessageDeleted);
 
             await ctx.reply(successMessage, { parse_mode: 'HTML' });
           } catch (error: any) {
@@ -764,7 +779,8 @@ export class PrivateCommands extends BaseCommand {
 
               await ctx.reply(
                 `✅ Updated ${validFormatKeys.length} keys, but validation hit a quota limit.\n\n` +
-                  `They will be verified on next use.`,
+                  `They will be verified on next use.` +
+                  secretDeletionNotice(keyMessageDeleted),
                 { parse_mode: 'HTML' }
               );
             } else if (

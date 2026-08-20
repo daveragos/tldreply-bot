@@ -1,6 +1,7 @@
 import { Context } from 'grammy';
 import { logger } from '../utils/logger';
 import { escapeHtml } from '../utils/formatter';
+import { deleteSecretMessage, secretDeletionNotice, warnIfSecretRemains } from '../utils/telegram';
 import { Conversation, ConversationFlavor } from '@grammyjs/conversations';
 import { GeminiService } from '../services/gemini';
 import { invalidateGeminiService } from '../services/geminiPool';
@@ -90,6 +91,15 @@ export async function setupApiKey(
   // Use the last context for replies (the one with the API key)
   const replyCtx = lastCtx || ctx;
 
+  // Remove the pasted key from the chat immediately - before validation, since
+  // a key that fails to validate is no less sensitive than one that works.
+  const keyMessageDeleted = await deleteSecretMessage(
+    replyCtx.api,
+    chat.id,
+    replyCtx.message?.message_id
+  );
+  await warnIfSecretRemains(replyCtx.api, chat.id, keyMessageDeleted);
+
   // Parse input into separate keys
   const rawKeys = apiKey
     .split(/[\n,]/) // Split by newline or comma
@@ -174,6 +184,7 @@ export async function setupApiKey(
     if (invalidFormatKeys.length > 0) {
       successMessage += `\n\n⚠️ ${invalidFormatKeys.length} keys were skipped due to invalid format.`;
     }
+    successMessage += secretDeletionNotice(keyMessageDeleted);
 
     await replyCtx.reply(successMessage);
   } catch (error: any) {
@@ -421,12 +432,19 @@ export async function updateApiKey(
       return;
     }
 
+    const keyMessageDeleted = await deleteSecretMessage(
+      apiKeyCtx.api,
+      chat.id,
+      apiKeyCtx.message?.message_id
+    );
+    await warnIfSecretRemains(apiKeyCtx.api, chat.id, keyMessageDeleted);
+
     // Validate and update
     logger.info(`updateApiKey: Validating and updating API key for group ${groupChatId}`);
     const result = await validateAndUpdateApiKey(apiKey, groupChatId, userId, apiKeyCtx);
     logger.info(`updateApiKey: Result - success: ${result.success}`);
 
-    await apiKeyCtx.reply(result.message);
+    await apiKeyCtx.reply(result.message + secretDeletionNotice(keyMessageDeleted));
     logger.info(`updateApiKey: Response sent to user ${userId}`);
   } catch (error: any) {
     clearUpdateState(chat.id);
