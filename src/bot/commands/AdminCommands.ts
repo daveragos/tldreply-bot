@@ -38,13 +38,15 @@ export class AdminCommands extends BaseCommand {
     this.bot.callbackQuery(
       /^style_(default|detailed|brief|bullet|timeline)_(-?\d+)$/,
       async (ctx: MyContext) => {
-        await ctx.answerCallbackQuery();
+        if (!(await this.requireAdminForCallback(ctx))) return;
+
         const match = ctx.callbackQuery?.data?.match(
           /^style_(default|detailed|brief|bullet|timeline)_(-?\d+)$/
         );
         if (!match) return;
         const style = match[1];
         const chatId = parseInt(match[2], 10);
+        if (!this.callbackChatIdMatches(ctx, chatId)) return;
 
         try {
           await this.db.updateGroupSettings(chatId, {
@@ -176,9 +178,21 @@ export class AdminCommands extends BaseCommand {
         await ctx.reply('❌ Only group admins can configure scheduling.');
         return;
       }
-    } else {
-      await ctx.answerCallbackQuery();
+    } else if (!(await this.requireAdminForCallback(ctx))) {
+      return;
     }
+
+    await this.renderSchedule(ctx);
+  }
+
+  /**
+   * Draws the schedule menu. Split from handleSchedule so toggle handlers can
+   * redraw without answering the callback query a second time - Telegram
+   * rejects a duplicate answer for the same query.
+   */
+  private async renderSchedule(ctx: MyContext) {
+    const chat = ctx.chat;
+    if (!chat) return;
 
     try {
       const settings = await this.db.getGroupSettings(chat.id);
@@ -230,9 +244,17 @@ export class AdminCommands extends BaseCommand {
         await ctx.reply('❌ Only group admins can configure filters.');
         return;
       }
-    } else {
-      await ctx.answerCallbackQuery();
+    } else if (!(await this.requireAdminForCallback(ctx))) {
+      return;
     }
+
+    await this.renderFilter(ctx);
+  }
+
+  /** Draws the filter menu. Split from handleFilter for the same reason as renderSchedule. */
+  private async renderFilter(ctx: MyContext) {
+    const chat = ctx.chat;
+    if (!chat) return;
 
     try {
       const settings = await this.db.getGroupSettings(chat.id);
@@ -291,7 +313,7 @@ export class AdminCommands extends BaseCommand {
   // --- Handlers for Callback Queries ---
 
   private async handleSettingsStyle(ctx: MyContext) {
-    await ctx.answerCallbackQuery();
+    if (!(await this.requireAdminForCallback(ctx))) return;
     const chat = ctx.chat;
     if (!chat || chat.type === 'private') return;
 
@@ -322,7 +344,7 @@ export class AdminCommands extends BaseCommand {
   }
 
   private async handleSettingsPrompt(ctx: MyContext) {
-    await ctx.answerCallbackQuery();
+    if (!(await this.requireAdminForCallback(ctx))) return;
     await ctx.editMessageText(
       '🔧 <b>Custom Prompt</b>\n\n' +
         'Send your custom prompt. Use <code>{{messages}}</code> as a placeholder for messages.\n\n' +
@@ -335,12 +357,12 @@ export class AdminCommands extends BaseCommand {
   }
 
   private async handleSettingsFilterMenu(ctx: MyContext) {
-    await ctx.answerCallbackQuery();
-    await this.handleFilter(ctx);
+    if (!(await this.requireAdminForCallback(ctx))) return;
+    await this.renderFilter(ctx);
   }
 
   private async handleSettingsView(ctx: MyContext) {
-    await ctx.answerCallbackQuery();
+    if (!(await this.requireAdminForCallback(ctx))) return;
     const chat = ctx.chat;
     if (!chat || chat.type === 'private') return;
 
@@ -369,7 +391,7 @@ export class AdminCommands extends BaseCommand {
   }
 
   private async handleSettingsBack(ctx: MyContext) {
-    await ctx.answerCallbackQuery();
+    if (!(await this.requireAdminForCallback(ctx))) return;
 
     const chat = ctx.chat;
     if (!chat) return;
@@ -406,85 +428,83 @@ export class AdminCommands extends BaseCommand {
   }
 
   private async handleScheduleToggle(ctx: MyContext) {
-    await ctx.answerCallbackQuery();
+    if (!(await this.requireAdminForCallback(ctx))) return;
+
     const match = ctx.callbackQuery?.data?.match(/^schedule_toggle_(-?\d+)$/);
     if (!match) return;
     const chatId = parseInt(match[1], 10);
+    if (!this.callbackChatIdMatches(ctx, chatId)) return;
 
     try {
       const settings = await this.db.getGroupSettings(chatId);
       await this.db.updateGroupSettings(chatId, {
         scheduledEnabled: !settings.scheduled_enabled,
       });
-      await this.handleSchedule(ctx);
+      await this.renderSchedule(ctx);
     } catch (error) {
       // error
     }
   }
 
   private async handleScheduleFrequency(ctx: MyContext) {
-    await ctx.answerCallbackQuery();
+    if (!(await this.requireAdminForCallback(ctx))) return;
+
     const match = ctx.callbackQuery?.data?.match(/^schedule_freq_(daily|weekly)_(-?\d+)$/);
     if (!match) return;
     const frequency = match[1];
     const chatId = parseInt(match[2], 10);
+    if (!this.callbackChatIdMatches(ctx, chatId)) return;
 
     try {
       await this.db.updateGroupSettings(chatId, {
         scheduleFrequency: frequency,
       });
-      await this.handleSchedule(ctx);
+      await this.renderSchedule(ctx);
     } catch (error) {
       // error
     }
   }
 
   private async handleFilterBot(ctx: MyContext) {
-    await ctx.answerCallbackQuery();
+    if (!(await this.requireAdminForCallback(ctx))) return;
+
     const match = ctx.callbackQuery?.data?.match(/^filter_bot_(-?\d+)$/);
     if (!match) return;
     const chatId = parseInt(match[1], 10);
+    if (!this.callbackChatIdMatches(ctx, chatId)) return;
 
     try {
       const settings = await this.db.getGroupSettings(chatId);
       await this.db.updateGroupSettings(chatId, {
         excludeBotMessages: !settings.exclude_bot_messages,
       });
-      await this.handleFilter(ctx);
+      await this.renderFilter(ctx);
     } catch (error) {
       // error
     }
   }
 
   private async handleFilterCmd(ctx: MyContext) {
-    await ctx.answerCallbackQuery();
+    if (!(await this.requireAdminForCallback(ctx))) return;
+
     const match = ctx.callbackQuery?.data?.match(/^filter_cmd_(-?\d+)$/);
     if (!match) return;
     const chatId = parseInt(match[1], 10);
+    if (!this.callbackChatIdMatches(ctx, chatId)) return;
 
     try {
       const settings = await this.db.getGroupSettings(chatId);
       await this.db.updateGroupSettings(chatId, {
         excludeCommands: !settings.exclude_commands,
       });
-      await this.handleFilter(ctx);
+      await this.renderFilter(ctx);
     } catch (error) {
       // error
     }
   }
 
   private async handleFilterUsers(ctx: MyContext) {
-    await ctx.answerCallbackQuery();
-    const chat = ctx.chat;
-    if (!chat || chat.type === 'private') return;
-
-    const userId = ctx.from?.id;
-    if (!userId) return;
-
-    const isAdmin = await this.isAdminOrCreator(ctx, chat.id, userId);
-    if (!isAdmin) {
-      return;
-    }
+    if (!(await this.requireAdminForCallback(ctx))) return;
 
     await ctx.conversation.enter('excludeUsers', { overwrite: true });
   }
