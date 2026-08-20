@@ -34,3 +34,6 @@ coverage/
 backups/
 *.jsonl
 *.jsonl.gz
+
+# Rendered wrap images (contain member names)
+wraps/

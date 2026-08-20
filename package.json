@@ -18,7 +18,8 @@
     "db:export": "tsx src/scripts/db_backup.ts export",
     "db:verify": "tsx src/scripts/db_backup.ts verify",
     "db:restore": "tsx src/scripts/db_backup.ts restore",
-    "db:rekey": "tsx src/scripts/db_rekey.ts"
+    "db:rekey": "tsx src/scripts/db_rekey.ts",
+    "wrap": "tsx src/scripts/wrap/index.ts"
   },
   "keywords": [
     "telegram",
@@ -34,6 +35,7 @@
   "dependencies": {
     "@google/genai": "^1.28.0",
     "@grammyjs/conversations": "^2.1.0",
+    "@napi-rs/canvas": "^1.0.7",
     "dotenv": "^17.2.3",
     "grammy": "^1.38.3",
     "pg": "^8.16.3",
