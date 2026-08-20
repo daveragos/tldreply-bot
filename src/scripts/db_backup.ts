@@ -126,13 +126,30 @@ async function exportMessages(db: Database): Promise<void> {
   if (out) out.pipe(sink);
   const target = out ?? sink;
 
+  // A single persistent error handler. Attaching one per write() call leaks
+  // listeners across millions of rows and trips MaxListenersExceededWarning.
+  let streamError: Error | null = null;
+  const captureError = (error: Error) => {
+    streamError = error;
+  };
+  target.on('error', captureError);
+  sink.on('error', captureError);
+
   /** Applies backpressure, so a slow disk cannot balloon memory. */
-  const write = (line: string): Promise<void> =>
-    new Promise((resolve, reject) => {
-      if (target.write(line)) return resolve();
-      target.once('drain', resolve);
-      target.once('error', reject);
+  const write = (line: string): Promise<void> => {
+    if (streamError) return Promise.reject(streamError);
+
+    // A true return means the buffer accepted it; only wait when it is full.
+    if (target.write(line)) return Promise.resolve();
+
+    return new Promise<void>(resolve => {
+      const onDrain = () => {
+        target.off('drain', onDrain);
+        resolve();
+      };
+      target.once('drain', onDrain);
     });
+  };
 
   const chatIds = new Set<number>();
   let written = 0;
@@ -170,6 +187,11 @@ async function exportMessages(db: Database): Promise<void> {
     sink.on('error', reject);
     target.end();
   });
+
+  if (streamError) {
+    console.error(`\n  \u2717 Export failed while writing: ${(streamError as Error).message}\n`);
+    process.exit(1);
+  }
 
   process.stdout.write('\n');
 
