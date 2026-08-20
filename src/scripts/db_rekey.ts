@@ -94,6 +94,60 @@ export function parseStoredKeys(plaintext: string): { keys: string[]; wasBareStr
   }
 }
 
+/**
+ * Reports how many stored keys the given secret can read.
+ *
+ * A mismatch between the secret here and the one the bot actually runs with
+ * shows up as records that will not decrypt, which is otherwise only visible
+ * as "Invalid API key" errors in the groups themselves.
+ */
+async function checkSecret(secret: string): Promise<void> {
+  if (!process.env.DATABASE_URL) {
+    console.error('DATABASE_URL is not set.');
+    process.exit(1);
+  }
+
+  const crypto = new EncryptionService(secret);
+  const db = new Database(process.env.DATABASE_URL);
+
+  try {
+    const groups = await db.query(
+      `SELECT telegram_chat_id, gemini_api_key_encrypted, updated_at
+       FROM groups WHERE gemini_api_key_encrypted IS NOT NULL
+       ORDER BY updated_at DESC NULLS LAST`,
+      []
+    );
+
+    let readable = 0;
+    const unreadable: string[] = [];
+
+    for (const row of groups.rows) {
+      try {
+        const keys = parseStoredKeys(crypto.decrypt(row.gemini_api_key_encrypted));
+        if (keys.keys.length > 0) readable++;
+        else unreadable.push(String(row.telegram_chat_id));
+      } catch {
+        unreadable.push(String(row.telegram_chat_id));
+      }
+    }
+
+    console.log(`\n  Readable with this secret : ${readable} / ${groups.rows.length}`);
+
+    if (unreadable.length > 0) {
+      console.log(`  Unreadable                : ${unreadable.length}`);
+      for (const id of unreadable.slice(0, 10)) console.log(`      ${id}`);
+      console.log('\n  Those groups cannot use /tldr while the bot runs with this secret.');
+      console.log('  Set ENCRYPTION_SECRET to the value the bot was running with when');
+      console.log('  their keys were saved, then re-check.\n');
+      process.exit(1);
+    }
+
+    console.log('  ✓ Every stored key is readable with this secret.\n');
+  } finally {
+    await db.close();
+  }
+}
+
 async function main(): Promise<void> {
   const currentSecret = process.env.ENCRYPTION_SECRET;
   const newSecret = arg('new');
@@ -104,8 +158,16 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // --check answers "does this secret read the stored keys?" without changing
+  // anything, so a candidate can be tested before committing to a rotation.
+  if (hasFlag('check')) {
+    await checkSecret(currentSecret);
+    return;
+  }
+
   if (!newSecret) {
     console.error('Usage: npm run db:rekey -- --new <secret> [--dry-run]');
+    console.error('       npm run db:rekey -- --check      test the current secret');
     console.error('Generate one with: openssl rand -hex 32');
     process.exit(1);
   }
