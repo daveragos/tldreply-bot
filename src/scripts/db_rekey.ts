@@ -153,7 +153,9 @@ async function main(): Promise<void> {
 
         rotated.push({ chatId, blob: newCrypto.encrypt(plaintext) });
         const legacy = EncryptionService.isLegacyFormat(row.gemini_api_key_encrypted);
-        console.log(`  ✓ ${chatId}  ${count} key(s)${legacy ? '  [upgrading from legacy CBC]' : ''}`);
+        console.log(
+          `  ✓ ${chatId}  ${count} key(s)${legacy ? '  [upgrading from legacy CBC]' : ''}`
+        );
       } catch (error) {
         failed++;
         console.error(
