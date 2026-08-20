@@ -3,6 +3,7 @@ import { BaseCommand, MyContext } from './BaseCommand';
 import { GeminiService } from '../../services/gemini';
 import { logger } from '../../utils/logger';
 import { markdownToHtml, splitMessage } from '../../utils/formatter';
+import { config } from '../../config';
 
 export class GroupCommands extends BaseCommand {
   private rateLimitMap = new Map<string, number>();
@@ -568,7 +569,7 @@ export class GroupCommands extends BaseCommand {
         userId: userId,
         username: username,
         firstName: firstName,
-        content: content.substring(0, 5000), // Limit content length
+        content: content.substring(0, config.messageMaxChars),
         isBot: isBot,
         isChannel: isChannel,
       });

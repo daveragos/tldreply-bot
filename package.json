@@ -12,7 +12,9 @@
     "lint:fix": "eslint . --ext .ts --fix",
     "format": "prettier --write \"src/**/*.{ts,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,json}\"",
-    "list-models": "tsx src/scripts/list_models.ts"
+    "list-models": "tsx src/scripts/list_models.ts",
+    "db:stats": "tsx src/scripts/db_maintenance.ts stats",
+    "db:purge": "tsx src/scripts/db_maintenance.ts purge"
   },
   "keywords": [
     "telegram",

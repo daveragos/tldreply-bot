@@ -538,6 +538,30 @@ Follow all formatting and style guidelines specified in the system_instructions 
     }
   }
 
+  /**
+   * Clears pending key-recovery timers.
+   *
+   * markKeyAsExhausted schedules a timer per exhausted key; without this the
+   * timers keep a discarded instance (and its keys) alive until they fire.
+   */
+  dispose(): void {
+    for (const timer of this.exhaustionTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.exhaustionTimers.clear();
+    this.exhaustedKeys.clear();
+  }
+
+  /** Number of keys currently rate-limited, for diagnostics. */
+  get exhaustedKeyCount(): number {
+    return this.exhaustedKeys.size;
+  }
+
+  /** Total number of keys configured for this group. */
+  get keyCount(): number {
+    return this.keys.length;
+  }
+
   static validateApiKey(apiKey: string): boolean {
     // Basic sanity check only - the real validation is the live test call that follows.
     // Google issues several key shapes: classic `AIzaSy...` keys as well as newer

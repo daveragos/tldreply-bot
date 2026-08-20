@@ -101,11 +101,75 @@ export class MessageRepository extends BaseRepository {
     return result.rows;
   }
 
-  async cleanupOldMessages(hoursAgo: number): Promise<void> {
+  /**
+   * Deletes messages past the retention window in batches.
+   *
+   * A single unbounded DELETE over a large backlog holds one long transaction
+   * and bloats the WAL, which matters on a small managed instance. Batching
+   * keeps each statement short and lets other queries interleave.
+   *
+   * @returns the number of rows deleted
+   */
+  async cleanupOldMessages(hoursAgo: number, batchSize: number = 5000): Promise<number> {
+    let totalDeleted = 0;
+
+    for (;;) {
+      const result = await this.db.query(
+        `DELETE FROM messages
+         WHERE id IN (
+           SELECT id FROM messages
+           WHERE timestamp < NOW() - (INTERVAL '1 hour' * $1)
+           LIMIT $2
+         )`,
+        [hoursAgo, batchSize]
+      );
+
+      const deleted = result.rowCount ?? 0;
+      totalDeleted += deleted;
+
+      if (deleted < batchSize) break;
+    }
+
+    if (totalDeleted > 0) {
+      logger.info(`Cleaned up ${totalDeleted} old messages`);
+    }
+    return totalDeleted;
+  }
+
+  /** Counts messages older than the retention window without loading them. */
+  async countMessagesOlderThan(hoursAgo: number): Promise<number> {
     const result = await this.db.query(
-      "DELETE FROM messages WHERE timestamp < NOW() - (INTERVAL '1 hour' * $1)",
+      "SELECT COUNT(*)::int AS count FROM messages WHERE timestamp < NOW() - (INTERVAL '1 hour' * $1)",
       [hoursAgo]
     );
-    logger.info(`Cleaned up ${result.rowCount} old messages`);
+    return result.rows[0]?.count ?? 0;
+  }
+
+  /**
+   * Streams the chat IDs that have messages due for cleanup, so the caller can
+   * process one group at a time instead of loading every stale row into memory.
+   */
+  async getChatIdsWithMessagesOlderThan(hoursAgo: number): Promise<number[]> {
+    const result = await this.db.query(
+      `SELECT DISTINCT telegram_chat_id
+       FROM messages
+       WHERE timestamp < NOW() - (INTERVAL '1 hour' * $1)`,
+      [hoursAgo]
+    );
+    return result.rows.map((row: { telegram_chat_id: string | number }) =>
+      Number(row.telegram_chat_id)
+    );
+  }
+
+  /** Stale messages for a single chat, oldest first. */
+  async getMessagesToCleanupForChat(chatId: number, hoursAgo: number): Promise<any[]> {
+    const result = await this.db.query(
+      `SELECT * FROM messages
+       WHERE telegram_chat_id = $1
+         AND timestamp < NOW() - (INTERVAL '1 hour' * $2)
+       ORDER BY timestamp ASC`,
+      [chatId, hoursAgo]
+    );
+    return result.rows;
   }
 }

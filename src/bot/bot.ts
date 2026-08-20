@@ -8,13 +8,12 @@ import { setServices, clearExpiredState } from '../services/services';
 import { logger } from '../utils/logger';
 import { CleanupService } from './services/CleanupService';
 import { SchedulerService } from './services/SchedulerService';
+import { config } from '../config';
 
 type MyContext = ConversationFlavor<Context>;
 
 /** How often to summarize-and-purge messages past the retention window. */
 const CLEANUP_INTERVAL_HOURS = 6;
-/** How long generated summaries are kept before deletion. */
-const SUMMARY_RETENTION_DAYS = 14;
 
 export class TLDRBot {
   private bot: Bot<MyContext>;
@@ -147,7 +146,7 @@ export class TLDRBot {
 
     // Delete stored summaries older than the summary retention window.
     this.every(24 * HOUR, 'summary cleanup', () =>
-      this.db.cleanupOldSummaries(SUMMARY_RETENTION_DAYS)
+      this.db.cleanupOldSummaries(config.summaryRetentionDays)
     );
 
     // Fire due scheduled summaries.

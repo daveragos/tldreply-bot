@@ -118,8 +118,8 @@ export class Database {
   async getMessagesToCleanup(hoursAgo: number): Promise<any[]> {
     return this.messages.getMessagesToCleanup(hoursAgo);
   }
-  async cleanupOldMessages(hoursAgo: number): Promise<void> {
-    return this.messages.cleanupOldMessages(hoursAgo);
+  async cleanupOldMessages(hoursAgo: number, batchSize?: number): Promise<number> {
+    return this.messages.cleanupOldMessages(hoursAgo, batchSize);
   }
 
   // Summaries
@@ -131,5 +131,52 @@ export class Database {
   }
   async cleanupOldSummaries(daysAgo: number): Promise<void> {
     return this.summaries.cleanupOldSummaries(daysAgo);
+  }
+
+  // --- Maintenance ---
+
+  /** Total size of the database in bytes, as reported by Postgres. */
+  async getDatabaseSizeBytes(): Promise<number> {
+    const result = await this.query(
+      'SELECT pg_database_size(current_database())::bigint AS size',
+      []
+    );
+    return Number(result.rows[0]?.size ?? 0);
+  }
+
+  /** Per-table size breakdown (largest first), including indexes and TOAST. */
+  async getTableSizes(): Promise<Array<{ table: string; bytes: number; rows: number }>> {
+    const result = await this.query(
+      `SELECT c.relname AS table,
+              pg_total_relation_size(c.oid)::bigint AS bytes,
+              GREATEST(c.reltuples, 0)::bigint AS rows
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public' AND c.relkind = 'r'
+       ORDER BY pg_total_relation_size(c.oid) DESC`,
+      []
+    );
+    return result.rows.map((row: { table: string; bytes: string; rows: string }) => ({
+      table: row.table,
+      bytes: Number(row.bytes),
+      rows: Number(row.rows),
+    }));
+  }
+
+  /**
+   * Returns space from deleted rows to the free space map so the table stops
+   * growing. This does NOT shrink the file on disk - that needs VACUUM FULL,
+   * which takes an exclusive lock and is left to the maintenance script.
+   */
+  async vacuumMessages(): Promise<void> {
+    // VACUUM cannot run inside a transaction block, so it goes through a
+    // dedicated client rather than the pooled query path.
+    const client = await this.getClient();
+    try {
+      await client.query('VACUUM (ANALYZE) messages');
+      logger.info('Vacuumed messages table');
+    } finally {
+      client.release();
+    }
   }
 }
