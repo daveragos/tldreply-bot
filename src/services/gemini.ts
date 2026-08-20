@@ -223,6 +223,91 @@ export class GeminiService {
   }
 
   /**
+   * Summarizes a range that reaches past the message retention window.
+   *
+   * Raw messages only exist for the retention window; anything older survives
+   * only as a stored summary. This combines the two into one answer rather
+   * than silently returning just the recent slice.
+   *
+   * @param archives     stored summaries covering the older part of the range
+   * @param liveMessages raw messages still inside the retention window
+   */
+  async summarizeWithHistory(
+    archives: Array<{
+      summaryText: string;
+      periodStart: Date;
+      periodEnd: Date;
+      messageCount: number;
+    }>,
+    liveMessages: Array<{
+      username?: string;
+      firstName?: string;
+      content: string;
+      timestamp: string;
+      isBot?: boolean;
+      isChannel?: boolean;
+      messageId?: number;
+    }>,
+    options?: {
+      customPrompt?: string | null;
+      summaryStyle?: string;
+      chatId?: number;
+      chatUsername?: string;
+      topicFocus?: string;
+    }
+  ): Promise<string> {
+    if (archives.length === 0) {
+      return this.summarizeMessages(liveMessages, options);
+    }
+
+    // Summarize the live tail first so both halves arrive as summaries.
+    let recentSummary = '';
+    if (liveMessages.length > 0) {
+      recentSummary = await this.summarizeMessages(liveMessages, options);
+    }
+
+    const formatDate = (d: Date) =>
+      new Date(d).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+
+    const archiveSections = archives
+      .map(
+        a =>
+          `[Archived ${formatDate(a.periodStart)} to ${formatDate(a.periodEnd)}, ` +
+          `${a.messageCount} messages]:\n${a.summaryText}`
+      )
+      .join('\n\n---\n\n');
+
+    const sections = recentSummary
+      ? `${archiveSections}\n\n---\n\n[Recent messages, still in cache]:\n${recentSummary}`
+      : archiveSections;
+
+    const styleInstructions = this.getStyleInstructions(options?.summaryStyle || 'default');
+
+    const systemInstructions = `You are a helpful assistant that merges summaries covering different periods of a Telegram group chat into one continuous summary.
+${styleInstructions}
+
+The sections below are summaries of consecutive time periods, oldest first. Some cover archived periods whose original messages are no longer available; the last may cover recent messages.
+
+Produce a single coherent summary that:
+- Reads as one narrative across the whole period, not a list of sections
+- Preserves chronological order
+- Merges topics that continue across periods instead of repeating them
+- Keeps decisions, announcements and unresolved questions
+- Preserves any message links exactly as they appear in the source sections
+
+CRITICAL: Refer to users exactly as they appear in the sections - @username or FirstName. Never use generic terms like "a user" or "someone". Do not wrap names in brackets.
+
+Note: older periods are summaries of summaries, so they carry less detail than the recent section. Do not present that as the older period being less important.`;
+
+    const prompt = this.buildStructuredPrompt(systemInstructions, {
+      topic: options?.topicFocus,
+      messages: sections,
+    });
+
+    return await this.generateContentWithFallback(prompt);
+  }
+
+  /**
    * Hierarchical summarization for large message sets
    * Splits messages into chunks, summarizes each chunk, then merges and summarizes again
    */

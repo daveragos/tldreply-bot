@@ -1,6 +1,6 @@
 import { NextFunction } from 'grammy';
 import { BaseCommand, MyContext } from './BaseCommand';
-import { GeminiService } from '../../services/gemini';
+import { getGeminiService } from '../../services/geminiPool';
 import { logger } from '../../utils/logger';
 import { markdownToHtml, splitMessage } from '../../utils/formatter';
 import { config } from '../../config';
@@ -12,6 +12,7 @@ export class GroupCommands extends BaseCommand {
   register() {
     this.bot.command('tldr', this.handleTLDR.bind(this));
     this.bot.command('tldr_info', this.handleTLDRInfo.bind(this));
+    this.bot.command('history', this.handleHistory.bind(this));
     this.bot.command(['tldr_help', 'help'], this.handleTLDRHelp.bind(this));
     this.bot.command('enable', this.handleEnable.bind(this));
     this.bot.command('disable', this.handleDisable.bind(this));
@@ -85,6 +86,8 @@ export class GroupCommands extends BaseCommand {
       // Check if input is a count (pure number) or time-based (has h/d suffix or keywords)
       let messages: any[];
       let summaryLabel: string;
+      let archives: any[] = [];
+      let rangeNote = '';
 
       if (this.isCountBased(parsedArgs.input)) {
         // Count-based: Get last N messages
@@ -107,12 +110,36 @@ export class GroupCommands extends BaseCommand {
           10000,
           parsedArgs.username
         );
+
+        // Ranges reaching past the retention window are answered from the
+        // summary archive, since the raw messages for that period are gone.
+        // Per-user filtering is not possible against an archive, so those
+        // requests stay message-only.
+        const retentionCutoff = new Date(
+          Date.now() - config.messageRetentionHours * 60 * 60 * 1000
+        );
+        if (since < retentionCutoff) {
+          if (parsedArgs.username) {
+            // Archived summaries cannot be filtered by author.
+            rangeNote =
+              `Only the last ${config.messageRetentionHours}h could be searched for ` +
+              `@${parsedArgs.username} — older messages are archived as summaries, ` +
+              'which cannot be filtered by user.';
+          } else {
+            archives = await this.db.getSummariesInRange(chat.id, since, retentionCutoff);
+            if (archives.length === 0) {
+              rangeNote =
+                `Only the last ${config.messageRetentionHours}h is available — older messages ` +
+                'have been deleted and no archived summary covers that period yet.';
+            }
+          }
+        }
       }
 
       logger.info(
         `Generating summary for ${chat.id}: ${summaryLabel} (${messages.length} messages)`
       );
-      if (messages.length === 0) {
+      if (messages.length === 0 && archives.length === 0) {
         const errorMsg = this.isCountBased(parsedArgs.input)
           ? '📭 No messages found in the database.'
           : '📭 No messages found in the specified time range.';
@@ -135,7 +162,7 @@ export class GroupCommands extends BaseCommand {
       // Filter messages based on settings
       const filteredMessages = this.filterMessages(messages, settings, ctx);
 
-      if (filteredMessages.length === 0) {
+      if (filteredMessages.length === 0 && archives.length === 0) {
         await ctx.api.editMessageText(
           chat.id,
           loadingMsg.message_id,
@@ -161,8 +188,7 @@ export class GroupCommands extends BaseCommand {
         return;
       }
 
-      const decryptedKey = this.encryption.decrypt(group.gemini_api_key_encrypted);
-      const gemini = new GeminiService(decryptedKey);
+      const gemini = getGeminiService(chat.id, group.gemini_api_key_encrypted, this.encryption);
 
       const formattedMessages = filteredMessages.map(msg => ({
         username: msg.username,
@@ -174,13 +200,31 @@ export class GroupCommands extends BaseCommand {
         messageId: msg.message_id,
       }));
 
-      const summary = await gemini.summarizeMessages(formattedMessages, {
+      const summaryOptions = {
         customPrompt: settings.custom_prompt,
         summaryStyle: summaryStyle,
         chatId: chat.id,
         chatUsername: chat.username,
         topicFocus: validatedTopic || undefined,
-      });
+      };
+
+      const summary =
+        archives.length > 0
+          ? await gemini.summarizeWithHistory(
+              archives.map(a => ({
+                summaryText: a.summary_text,
+                periodStart: a.period_start,
+                periodEnd: a.period_end,
+                messageCount: a.message_count,
+              })),
+              formattedMessages,
+              summaryOptions
+            )
+          : await gemini.summarizeMessages(formattedMessages, summaryOptions);
+
+      if (archives.length > 0) {
+        summaryLabel += `, ${archives.length} archived period${archives.length !== 1 ? 's' : ''}`;
+      }
 
       // Convert message ID references to markdown links
       const summaryWithLinks = this.convertMessageIdsToLinks(
@@ -191,7 +235,11 @@ export class GroupCommands extends BaseCommand {
       );
 
       // Convert markdown to HTML
-      const formattedSummary = markdownToHtml(summaryWithLinks);
+      let formattedSummary = markdownToHtml(summaryWithLinks);
+
+      if (rangeNote) {
+        formattedSummary += `\n\n<i>ℹ️ ${rangeNote}</i>`;
+      }
 
       // Send summary, splitting into multiple messages if too long
       await this.sendSummaryMessage(
@@ -238,7 +286,6 @@ export class GroupCommands extends BaseCommand {
       const parsedArgs = this.parseTLDRArgs(args.slice(1));
 
       const group = await this.db.getGroup(chat.id);
-      const decryptedKey = this.encryption.decrypt(group.gemini_api_key_encrypted);
 
       loadingMsg = await ctx.reply('⏳ Generating summary...');
 
@@ -303,7 +350,7 @@ export class GroupCommands extends BaseCommand {
         return;
       }
 
-      const gemini = new GeminiService(decryptedKey);
+      const gemini = getGeminiService(chat.id, group.gemini_api_key_encrypted, this.encryption);
       const summary = await gemini.summarizeMessages(formattedMessages, {
         customPrompt: settings.custom_prompt,
         summaryStyle: summaryStyle,
@@ -356,6 +403,104 @@ export class GroupCommands extends BaseCommand {
     }
   }
 
+  // --- History ---
+
+  /**
+   * Lists archived summaries, or prints one in full.
+   *
+   * Messages are deleted after the retention window, but the summary written
+   * just before deletion is kept for much longer. This is the only way to read
+   * that archive: without it the summaries were write-only.
+   */
+  async handleHistory(ctx: MyContext) {
+    const chat = ctx.chat;
+    if (!chat || chat.type === 'private') {
+      await ctx.reply('❌ This command can only be used in a group.');
+      return;
+    }
+
+    try {
+      const group = await this.db.getGroup(chat.id);
+      if (!group) {
+        await ctx.reply('❌ This group is not configured.');
+        return;
+      }
+
+      const summaries = await this.db.getSummariesForGroup(chat.id, 20);
+
+      if (summaries.length === 0) {
+        await ctx.reply(
+          '📭 <b>No archived summaries yet</b>\n\n' +
+            `Summaries are written automatically when messages pass the ${config.messageRetentionHours}-hour ` +
+            'retention window, then kept for ' +
+            `${config.summaryRetentionDays} days.\n\n` +
+            '<i>Come back once this group has been active for a couple of days.</i>',
+          { parse_mode: 'HTML' }
+        );
+        return;
+      }
+
+      // `/history 3` prints the third entry in full.
+      const args = ctx.message?.text?.split(' ') ?? [];
+      const requested = args.length > 1 ? parseInt(args[1], 10) : NaN;
+
+      if (!Number.isNaN(requested)) {
+        if (requested < 1 || requested > summaries.length) {
+          await ctx.reply(
+            `❌ Pick a number between 1 and ${summaries.length}. Run /history to see the list.`
+          );
+          return;
+        }
+
+        const entry = summaries[requested - 1];
+        const header =
+          `📚 <b>Archived Summary</b> (${this.formatPeriod(entry.period_start, entry.period_end)}, ` +
+          `${entry.message_count} messages)`;
+        const body = markdownToHtml(entry.summary_text);
+
+        const chunks = splitMessage(body, 4096 - header.length - 100);
+        await ctx.reply(`${header}\n\n${chunks[0]}`, { parse_mode: 'HTML' });
+        for (let i = 1; i < chunks.length; i++) {
+          await ctx.reply(chunks[i], { parse_mode: 'HTML' });
+        }
+        return;
+      }
+
+      let message =
+        '📚 <b>Archived Summaries</b>\n\n' +
+        `Kept for ${config.summaryRetentionDays} days after the messages are deleted.\n\n`;
+
+      summaries.forEach((entry, idx) => {
+        message +=
+          `<b>${idx + 1}.</b> ${this.formatPeriod(entry.period_start, entry.period_end)}\n` +
+          `    ${entry.message_count} messages\n`;
+      });
+
+      message += '\n<i>Use /history &lt;number&gt; to read one in full.</i>';
+
+      await ctx.reply(message, { parse_mode: 'HTML' });
+    } catch (error) {
+      logger.error('Error listing history:', error);
+      await ctx.reply('❌ Error retrieving archived summaries.');
+    }
+  }
+
+  /** Renders a summary's covered period compactly, collapsing same-day ranges. */
+  private formatPeriod(start: Date | string, end: Date | string): string {
+    const from = new Date(start);
+    const to = new Date(end);
+
+    const day = (d: Date) =>
+      d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+    const time = (d: Date) =>
+      d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+
+    if (day(from) === day(to)) {
+      return `${day(from)}, ${time(from)}–${time(to)} UTC`;
+    }
+    return `${day(from)} ${time(from)} – ${day(to)} ${time(to)} UTC`;
+  }
+
   // --- TLDR Help ---
 
   async handleTLDRHelp(ctx: MyContext) {
@@ -373,6 +518,10 @@ export class GroupCommands extends BaseCommand {
       '• <code>/tldr 6h</code> - Last 6 hours\n' +
       "• <code>/tldr @user 1d</code> - User's talk in last day\n" +
       '• <code>/tldr 500 Secret Santa</code> - Focus on a topic\n\n' +
+      '📚 <b>Older than ' +
+      config.messageRetentionHours +
+      'h?</b>\n' +
+      '<code>/history</code> lists archived summaries, <code>/history 2</code> reads one.\n\n' +
       '<i>Reply to any message with <code>/tldr</code> to summarize from that point forward!</i>';
 
     await ctx.reply(helpMessage, { parse_mode: 'HTML' });

@@ -132,6 +132,9 @@ export class Database {
   async cleanupOldSummaries(daysAgo: number): Promise<void> {
     return this.summaries.cleanupOldSummaries(daysAgo);
   }
+  async getSummariesInRange(chatId: number, since: Date, until: Date): Promise<any[]> {
+    return this.summaries.getSummariesInRange(chatId, since, until);
+  }
 
   // --- Maintenance ---
 
