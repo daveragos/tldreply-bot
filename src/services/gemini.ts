@@ -539,8 +539,11 @@ Follow all formatting and style guidelines specified in the system_instructions 
   }
 
   static validateApiKey(apiKey: string): boolean {
-    // Basic validation - Gemini API keys typically have this format
-    return apiKey.length > 20 && /^[A-Za-z0-9_-]+$/.test(apiKey);
+    // Basic sanity check only - the real validation is the live test call that follows.
+    // Google issues several key shapes: classic `AIzaSy...` keys as well as newer
+    // `AQ.Ab8...` keys, which contain dots. Keep the charset permissive so a valid
+    // key is never rejected before it has been tried against the API.
+    return apiKey.length > 20 && /^[A-Za-z0-9_.-]+$/.test(apiKey);
   }
 
   private formatTelegramLink(chatId: number, messageId: number, chatUsername?: string): string {

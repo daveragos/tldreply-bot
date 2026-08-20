@@ -709,7 +709,7 @@ export class PrivateCommands extends BaseCommand {
 
           if (validFormatKeys.length === 0) {
             await ctx.reply(
-              '❌ Invalid API key format.\n\nNone of the provided keys looked like valid Gemini API keys.'
+              '❌ Invalid API key format.\n\nNone of the provided keys looked like valid Gemini API keys. Please paste the full key exactly as shown, with no extra spaces.\n\n💡 Get a key from: https://makersuite.google.com/app/apikey'
             );
             return;
           }
