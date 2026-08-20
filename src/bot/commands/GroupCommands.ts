@@ -272,7 +272,8 @@ export class GroupCommands extends BaseCommand {
     } catch (error: any) {
       logger.error('Error generating TLDR:', error);
 
-      const errorMessage = error.message || 'Unknown error occurred';
+      // Provider error text is not ours and may contain markup or URL fragments.
+      const errorMessage = escapeHtml(error.message || 'Unknown error occurred');
       const userFriendlyMessage =
         errorMessage.includes('Invalid API key') || errorMessage.includes('API key')
           ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> An admin can update the API key using /update_api_key in private chat.`
@@ -400,7 +401,8 @@ export class GroupCommands extends BaseCommand {
     } catch (error: any) {
       logger.error('Error generating TLDR from message:', error);
 
-      const errorMessage = error.message || 'Unknown error occurred';
+      // Provider error text is not ours and may contain markup or URL fragments.
+      const errorMessage = escapeHtml(error.message || 'Unknown error occurred');
       const userFriendlyMessage =
         errorMessage.includes('Invalid API key') || errorMessage.includes('API key')
           ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> An admin can update the API key using /update_api_key in private chat.`

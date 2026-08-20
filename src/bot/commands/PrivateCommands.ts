@@ -4,6 +4,7 @@ import { setUpdateState } from '../../services/services';
 import { GeminiService } from '../../services/gemini';
 import { invalidateGeminiService } from '../../services/geminiPool';
 import { logger } from '../../utils/logger';
+import { escapeHtml } from '../../utils/formatter';
 
 export class PrivateCommands extends BaseCommand {
   register() {
@@ -242,7 +243,10 @@ export class PrivateCommands extends BaseCommand {
           'title' in chatInfo ? (chatInfo.title ?? null) : null
         );
 
-        const groupName = 'title' in chatInfo ? chatInfo.title : `Group ${chatId}`;
+        // A group title is set by its admins and is rendered with parse_mode HTML.
+        const groupName = escapeHtml(
+          'title' in chatInfo && chatInfo.title ? chatInfo.title : `Group ${chatId}`
+        );
 
         await ctx.reply(
           `✅ Group "<b>${groupName}</b>" found!\n\n` +
@@ -347,7 +351,9 @@ export class PrivateCommands extends BaseCommand {
           return;
         }
 
-        const groupName = 'title' in chatInfo ? chatInfo.title : `Group ${groupChatId}`;
+        const groupName = escapeHtml(
+          'title' in chatInfo && chatInfo.title ? chatInfo.title : `Group ${groupChatId}`
+        );
 
         await ctx.reply(
           `✅ Found pending setup for: <b>${groupName}</b>\n\n` +
@@ -402,7 +408,7 @@ export class PrivateCommands extends BaseCommand {
         try {
           const chatInfo = await ctx.api.getChat(group.telegram_chat_id);
           if ('title' in chatInfo && chatInfo.title) {
-            groupName = chatInfo.title;
+            groupName = escapeHtml(chatInfo.title);
           }
         } catch (error) {
           groupName = `Group ${group.telegram_chat_id}`;

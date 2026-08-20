@@ -1,5 +1,6 @@
 import { Context } from 'grammy';
 import { logger } from '../utils/logger';
+import { escapeHtml } from '../utils/formatter';
 import { Conversation, ConversationFlavor } from '@grammyjs/conversations';
 import { GeminiService } from '../services/gemini';
 import { invalidateGeminiService } from '../services/geminiPool';
@@ -653,7 +654,7 @@ export async function setScheduleTimezone(
     new Intl.DateTimeFormat('en-US', { timeZone: input }).format(new Date());
   } catch {
     await inputCtx.reply(
-      `❌ "${input}" is not a timezone Telegram's server recognizes.\n\n` +
+      `❌ "${escapeHtml(input)}" is not a timezone Telegram's server recognizes.\n\n` +
         'Use an IANA name like <code>Africa/Addis_Ababa</code>. ' +
         'Search "IANA timezone list" if you are unsure.',
       { parse_mode: 'HTML' }

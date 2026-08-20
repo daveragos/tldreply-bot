@@ -1,6 +1,7 @@
 import { InlineKeyboard } from 'grammy';
 import { BaseCommand, MyContext } from './BaseCommand';
 import { logger } from '../../utils/logger';
+import { escapeHtml } from '../../utils/formatter';
 
 export class AdminCommands extends BaseCommand {
   register() {
@@ -298,8 +299,9 @@ export class AdminCommands extends BaseCommand {
           [chat.id, settings.excluded_user_ids]
         );
 
+        // Display names are set by the user and rendered with parse_mode HTML.
         const userList = userMessages.rows.map((u: any) =>
-          u.username ? `@${u.username}` : u.first_name || `ID:${u.user_id}`
+          escapeHtml(u.username ? `@${u.username}` : u.first_name || `ID:${u.user_id}`)
         );
         excludedUsersList = `\n<b>Excluded:</b> ${userList.join(', ')}`;
       }
