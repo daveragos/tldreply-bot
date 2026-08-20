@@ -25,19 +25,28 @@ const devFormat = printf(({ level, message, timestamp, stack, ...metadata }) => 
 // Create logs directory path
 const logsDir = join(process.cwd(), 'logs');
 
-// Create the logger instance
-const winstonInstance = createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: combine(
-    timestamp({
-      format: 'YYYY-MM-DD HH:mm:ss',
-    }),
-    errors({ stack: true }), // Handle errors gracefully
-    process.env.NODE_ENV !== 'production' ? format.simple() : json()
-  ),
-  defaultMeta: { service: 'tldreply-bot' },
-  transports: [
-    // File transport - Daily rotation
+/**
+ * File logging is opt-in via LOG_TO_FILE=true.
+ *
+ * On a container platform the filesystem is ephemeral, so rotated log files
+ * are lost on every deploy and cost disk in the meantime. Only enable this
+ * when running somewhere with persistent storage, such as a VPS.
+ */
+const logToFile = process.env.LOG_TO_FILE === 'true';
+
+const isProduction = process.env.NODE_ENV === 'production';
+
+const activeTransports: NonNullable<Parameters<typeof createLogger>[0]>['transports'] = [
+  // stdout is always attached. Hosting platforms capture stdout and show it in
+  // their log viewer; without this a production deploy produces no visible
+  // logs at all.
+  new transports.Console({
+    format: isProduction ? json() : combine(colorize(), devFormat),
+  }),
+];
+
+if (logToFile) {
+  activeTransports.push(
     new transports.DailyRotateFile({
       filename: join(logsDir, 'app-%DATE%.log'),
       datePattern: 'YYYY-MM-DD',
@@ -45,18 +54,22 @@ const winstonInstance = createLogger({
       maxSize: '20m',
       maxFiles: '14d',
       format: json(), // Always store JSON in files
-    }),
-  ],
-});
-
-// Add logger transport if not in production
-if (process.env.NODE_ENV !== 'production') {
-  winstonInstance.add(
-    new transports.Console({
-      format: combine(colorize(), devFormat),
     })
   );
 }
+
+// Create the logger instance
+const winstonInstance = createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: combine(
+    timestamp({
+      format: 'YYYY-MM-DD HH:mm:ss',
+    }),
+    errors({ stack: true }) // Handle errors gracefully
+  ),
+  defaultMeta: { service: 'tldreply-bot' },
+  transports: activeTransports,
+});
 
 // Wrapper class to maintain compatibility with existing code
 class LoggerWrapper {

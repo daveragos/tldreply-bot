@@ -59,6 +59,8 @@ ENCRYPTION_SECRET=your_random_secret_min_32_chars
 | `MESSAGE_MAX_CHARS` | `2000` | Stored characters per message — the biggest lever on database size. |
 | `DATABASE_SOFT_LIMIT_MB` | `500` | Your plan's size cap. Retention halves past 85% of it. |
 | `GEMINI_MODELS` | flash models | Models to try, in order. |
+| `PORT` | unset | When set, serves an HTTP health endpoint. Needed only if your host health checks over HTTP. |
+| `LOG_TO_FILE` | `false` | Write rotating log files. Only useful with persistent disk. |
 
 6. Set up the database:
 ```bash
@@ -225,25 +227,55 @@ The bot only stores messages it receives after being added to a group. It cannot
 - Supabase (free PostgreSQL tier)
 - Google Gemini (free AI tier)
 
-## Deploy to a VPS with Jenkins
+## Deploying
 
-Deployment runs through the `Jenkinsfile` in this repository.
+The bot uses Telegram long polling, so it needs a process that stays running.
+It is **not** a serverless workload: there is no request to respond to, and the
+background jobs (retention cleanup, scheduled summaries) run on timers inside
+the process.
 
-### Prerequisites
+### EthioDeploy
 
-- A VPS with Node.js 22 and PM2 installed
-- A Jenkins instance with the NodeJS plugin, configured with a `node22` tool
-- These Jenkins credentials: `telegram-token`, `database-url`, `encryption-secret`
+Deploy it as a **Background Worker**, not a Web Service. A web service is health
+checked over HTTP, and a polling bot serves no HTTP, so the check would never
+pass. Worker deploys are also sequential — the old container stops before the
+new one starts — which matters here, because two instances calling `getUpdates`
+at once causes Telegram 409 conflicts.
 
-### Pipeline stages
+Node.js is auto-detected. The relevant scripts already exist:
 
-1. `npm ci`
-2. Lint, format check and unit tests, in parallel
-3. `npm run build`
-4. Restart under PM2 via `ecosystem.config.js`
+| | |
+| --- | --- |
+| Build | `npm run build` |
+| Start | `npm start` |
 
-The deploy step removes any existing process before starting a new one, so two
-instances never poll Telegram simultaneously.
+Set these environment variables in the dashboard:
+
+```
+TELEGRAM_TOKEN
+DATABASE_URL
+ENCRYPTION_SECRET
+NODE_ENV=production
+```
+
+Logs go to stdout, so they appear in the platform's log viewer. Leave
+`LOG_TO_FILE` unset — the container filesystem is ephemeral, so rotated log
+files are lost on every deploy.
+
+### Other platforms
+
+Anything that runs a persistent container works the same way: Railway, Render,
+Fly.io, or a plain VPS with a process manager.
+
+If the platform insists on an HTTP health check, set `PORT` and the app will
+bind it and serve:
+
+| Path | Meaning |
+| --- | --- |
+| `/` | Liveness — the process is up |
+| `/health` | Readiness — includes a database round trip and usage stats |
+
+Without `PORT`, no socket is opened.
 
 ## Database maintenance
 
@@ -280,6 +312,7 @@ and shortens its retention window when usage passes 85% of the soft limit.
 - **Database**: PostgreSQL
 - **Encryption**: AES-256-GCM with PBKDF2 key derivation
 - **Tests**: `node:test` (no test framework dependency)
+- **Runtime**: a single long-lived process (long polling + timer-driven jobs)
 
 ## Security
 

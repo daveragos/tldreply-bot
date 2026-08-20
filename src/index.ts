@@ -3,6 +3,7 @@ import { Database } from './db/database';
 import { EncryptionService } from './utils/encryption';
 import { TLDRBot } from './bot/bot';
 import { logger } from './utils/logger';
+import { HealthServer } from './utils/healthServer';
 
 // Load environment variables
 dotenv.config();
@@ -44,6 +45,11 @@ async function main() {
   // Initialize bot
   const bot = new TLDRBot(TELEGRAM_TOKEN, db, encryption);
 
+  // Only binds when PORT is set, which is how a platform signals it expects
+  // an HTTP service rather than a background worker.
+  const health = new HealthServer(db);
+  health.start();
+
   // Register shutdown handlers before starting: bot.start() does not return until
   // the bot stops, so anything registered after it would never be installed.
   let shuttingDown = false;
@@ -53,6 +59,7 @@ async function main() {
     logger.info(`📴 Received ${signal}, shutting down...`);
     try {
       await bot.stop();
+      await health.stop();
       await db.close();
       logger.info('👋 Shutdown complete');
       process.exit(0);
