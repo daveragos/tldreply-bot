@@ -5,6 +5,7 @@ import { logger } from '../../utils/logger';
 import { markdownToHtml, splitMessage, escapeHtml } from '../../utils/formatter';
 import { config } from '../../config';
 import { parseTLDRArgs, parseTimeframe, isCountBased, parseCount } from '../../utils/tldrArgs';
+import { summaryErrorMessage } from '../../utils/userErrors';
 
 export class GroupCommands extends BaseCommand {
   private rateLimitMap = new Map<string, number>();
@@ -272,14 +273,9 @@ export class GroupCommands extends BaseCommand {
     } catch (error: any) {
       logger.error('Error generating TLDR:', error);
 
-      // Provider error text is not ours and may contain markup or URL fragments.
-      const errorMessage = escapeHtml(error.message || 'Unknown error occurred');
-      const userFriendlyMessage =
-        errorMessage.includes('Invalid API key') || errorMessage.includes('API key')
-          ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> An admin can update the API key using /update_api_key in private chat.`
-          : errorMessage.includes('quota') || errorMessage.includes('rate limit')
-            ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> Please wait a moment and try again, or check your Gemini API quota.`
-            : `❌ ${errorMessage}`;
+      // Provider error text is written for us, not for the group: it carries
+      // JSON, model IDs and HTTP codes that only worry the reader.
+      const userFriendlyMessage = summaryErrorMessage(error);
 
       // Try to edit the loading message to show error
       try {
@@ -401,14 +397,9 @@ export class GroupCommands extends BaseCommand {
     } catch (error: any) {
       logger.error('Error generating TLDR from message:', error);
 
-      // Provider error text is not ours and may contain markup or URL fragments.
-      const errorMessage = escapeHtml(error.message || 'Unknown error occurred');
-      const userFriendlyMessage =
-        errorMessage.includes('Invalid API key') || errorMessage.includes('API key')
-          ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> An admin can update the API key using /update_api_key in private chat.`
-          : errorMessage.includes('quota') || errorMessage.includes('rate limit')
-            ? `❌ ${errorMessage}\n\n💡 <b>Tip:</b> Please wait a moment and try again, or check your Gemini API quota.`
-            : `❌ ${errorMessage}`;
+      // Provider error text is written for us, not for the group: it carries
+      // JSON, model IDs and HTTP codes that only worry the reader.
+      const userFriendlyMessage = summaryErrorMessage(error);
 
       try {
         if (loadingMsg) {

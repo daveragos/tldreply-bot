@@ -1,6 +1,7 @@
 import { Context } from 'grammy';
 import { logger } from '../utils/logger';
 import { escapeHtml } from '../utils/formatter';
+import { apiKeyErrorMessage, classifyError } from '../utils/userErrors';
 import { deleteSecretMessage, secretDeletionNotice, warnIfSecretRemains } from '../utils/telegram';
 import { Conversation, ConversationFlavor } from '@grammyjs/conversations';
 import { GeminiService } from '../services/gemini';
@@ -190,45 +191,7 @@ export async function setupApiKey(
   } catch (error: any) {
     logger.error('API key validation error:', error);
 
-    // Provide specific error messages
-    const errorMessage = error.message || 'Unknown error';
-    if (
-      errorMessage.includes('Invalid API key') ||
-      errorMessage.includes('API_KEY_INVALID') ||
-      errorMessage.includes('401')
-    ) {
-      await replyCtx.reply(
-        '❌ Invalid API keys. The keys were rejected by the API. Please check your keys and try again.\n\n💡 Get a new key from: https://makersuite.google.com/app/apikey'
-      );
-    } else if (
-      errorMessage.includes('quota') ||
-      errorMessage.includes('QUOTA_EXCEEDED') ||
-      errorMessage.includes('429')
-    ) {
-      await replyCtx.reply(
-        '❌ API quota exceeded during test. However, since the format looks valid, please try /update_api_key later or try adding DIFFERENT keys.'
-      );
-    } else if (
-      errorMessage.includes('Permission denied') ||
-      errorMessage.includes('PERMISSION_DENIED') ||
-      errorMessage.includes('403')
-    ) {
-      await replyCtx.reply(
-        '❌ Permission denied. Your API key may not have access to the Gemini API. Please check your API key permissions.'
-      );
-    } else if (
-      errorMessage.includes('network') ||
-      errorMessage.includes('ECONNREFUSED') ||
-      errorMessage.includes('ENOTFOUND')
-    ) {
-      await replyCtx.reply(
-        '❌ Network error. Could not connect to the Gemini API. Please check your internet connection and try again.'
-      );
-    } else {
-      await replyCtx.reply(
-        `❌ Failed to validate API key: ${errorMessage}. Please check your key and try again.`
-      );
-    }
+    await replyCtx.reply(apiKeyErrorMessage(error));
   }
 }
 
@@ -322,37 +285,16 @@ async function validateAndUpdateApiKey(
   } catch (error: any) {
     // If it's a quota error or simple test failure, we might still want to save valid-formatted keys
     logger.error(`validateAndUpdateApiKey: API key test failed for group ${groupChatId}:`, error);
-    const errorMessage = error.message || 'Unknown error';
+    const kind = classifyError(error);
 
-    if (
-      errorMessage.includes('quota') ||
-      errorMessage.includes('QUOTA_EXCEEDED') ||
-      errorMessage.includes('429')
-    ) {
+    if (kind === 'quota') {
       logger.info(`validateAndUpdateApiKey: Quota error during validation - will save keys anyway`);
       hadQuotaError = true;
-    } else if (
-      errorMessage.includes('Invalid API key') ||
-      errorMessage.includes('API_KEY_INVALID') ||
-      errorMessage.includes('401')
-    ) {
-      return {
-        success: false,
-        message:
-          '❌ Invalid API keys. The keys were rejected by the API. Please check and try again.',
-      };
-    } else if (
-      errorMessage.includes('Permission denied') ||
-      errorMessage.includes('PERMISSION_DENIED') ||
-      errorMessage.includes('403')
-    ) {
-      return {
-        success: false,
-        message: '❌ Permission denied. Your API keys may not have access to the Gemini API.',
-      };
+    } else if (kind === 'invalidKey' || kind === 'permission') {
+      return { success: false, message: apiKeyErrorMessage(error) };
     } else {
       // Other errors (network etc) - warn but save
-      logger.warn(`validateAndUpdateApiKey: Unexpected error: ${errorMessage}`);
+      logger.warn(`validateAndUpdateApiKey: Unexpected error: ${error.message}`);
     }
   }
 
@@ -451,9 +393,7 @@ export async function updateApiKey(
     logger.error('Error in updateApiKey conversation:', error);
     logger.error('Error stack:', error.stack);
     try {
-      await ctx.reply(
-        `❌ An error occurred: ${error.message || 'Unknown error'}. Please try again with /update_api_key.`
-      );
+      await ctx.reply(apiKeyErrorMessage(error));
     } catch (replyError) {
       logger.error('Failed to send error message:', replyError);
     }

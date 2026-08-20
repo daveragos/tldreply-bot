@@ -2,6 +2,40 @@ import { GoogleGenAI } from '@google/genai';
 import { logger } from '../utils/logger';
 import { config } from '../config';
 
+/** A single model's failure while walking the fallback chain. */
+export interface ModelFailure {
+  model: string;
+  error: any;
+}
+
+/**
+ * Picks which failure to report once every model in the chain has failed.
+ *
+ * The chain always ends on whichever model is configured last, so reporting
+ * the final error names that model rather than what actually went wrong - a
+ * retired model at the end of the list reports "no longer available" over the
+ * quota error that stopped the first one. Prefer the first failure that is not
+ * a model-availability problem, and when every model is unavailable say that
+ * plainly instead of quoting one model's 404.
+ */
+export function pickReportableError(failures: ModelFailure[]): Error | undefined {
+  if (failures.length === 0) return undefined;
+
+  const isUnavailable = (failure: ModelFailure) => {
+    const message = failure.error?.message || '';
+    return message.includes('NOT_FOUND') || message.includes('404');
+  };
+
+  const realFailure = failures.find(failure => !isUnavailable(failure));
+  if (realFailure) return realFailure.error;
+
+  const models = [...new Set(failures.map(failure => failure.model))];
+  return new Error(
+    `None of the configured Gemini models are available (${models.join(', ')}). ` +
+      'An admin needs to set GEMINI_MODELS to a model the API still serves.'
+  );
+}
+
 export class GeminiService {
   private keys: string[];
   private currentKeyIndex: number = 0;
@@ -72,7 +106,7 @@ export class GeminiService {
   private async generateContentWithFallback(prompt: string): Promise<string> {
     const models = config.geminiModels;
     const maxGlobalRetries = 3;
-    let lastError: any;
+    const failures: ModelFailure[] = [];
 
     for (let attempt = 0; attempt < maxGlobalRetries; attempt++) {
       // Rotate key if needed
@@ -89,7 +123,7 @@ export class GeminiService {
           });
           return response.text || 'Generated summary (no text returned)';
         } catch (error: any) {
-          lastError = error;
+          failures.push({ model, error });
           const errorMessage = error.message || 'Unknown error';
 
           // Check for quota/rate limits
@@ -153,7 +187,10 @@ export class GeminiService {
       }
     }
 
-    throw lastError;
+    throw (
+      pickReportableError(failures) ??
+      new Error('No Gemini models are configured. Set GEMINI_MODELS to at least one model.')
+    );
   }
 
   async summarizeMessages(

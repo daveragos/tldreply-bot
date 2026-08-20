@@ -60,13 +60,19 @@ export const config = {
    * Models tried in order, first match wins.
    *
    * Kept short deliberately: every entry is a round trip when the one before
-   * it fails, so a long list turns one bad key into a long wait. Flash models
-   * come first because they are what the Gemini free tier affords.
+   * it fails, so a long list turns one bad key into a long wait.
    *
-   * Override with a comma-separated GEMINI_MODELS if a key has different access.
+   * A lite model leads because free-tier daily request limits are highest
+   * there, and summarising a chat does not need more. The 2.5 pair trails it
+   * on purpose: those are still served and have been free-tier reachable far
+   * longer than the 3.x models, so they cover a key the newer ones reject.
+   *
+   * Google no longer publishes which models a free key may call - that is now
+   * per-account, shown in AI Studio - so verify a chain against the key that
+   * will use it. Override with a comma-separated GEMINI_MODELS.
    */
   geminiModels: (
-    process.env.GEMINI_MODELS ?? 'gemini-2.5-flash,gemini-2.0-flash-001,gemini-2.0-flash-lite-001'
+    process.env.GEMINI_MODELS ?? 'gemini-3.5-flash-lite,gemini-2.5-flash-lite,gemini-2.5-flash'
   )
     .split(',')
     .map(m => m.trim())

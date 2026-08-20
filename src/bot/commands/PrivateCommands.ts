@@ -5,6 +5,7 @@ import { GeminiService } from '../../services/gemini';
 import { invalidateGeminiService } from '../../services/geminiPool';
 import { logger } from '../../utils/logger';
 import { escapeHtml } from '../../utils/formatter';
+import { apiKeyErrorMessage, classifyError } from '../../utils/userErrors';
 import {
   deleteSecretMessage,
   secretDeletionNotice,
@@ -765,14 +766,9 @@ export class PrivateCommands extends BaseCommand {
 
             await ctx.reply(successMessage, { parse_mode: 'HTML' });
           } catch (error: any) {
-            const errorMessage = error.message || 'Unknown error';
-
-            // If quota error, we save anyway but warn
-            if (
-              errorMessage.includes('quota') ||
-              errorMessage.includes('QUOTA_EXCEEDED') ||
-              errorMessage.includes('429')
-            ) {
+            // A quota error means the key answered but was busy, so keep it
+            // and let the next real use verify it.
+            if (classifyError(error) === 'quota') {
               const serializedKeys = JSON.stringify(validFormatKeys);
               const encryptedKey = this.encryption.encrypt(serializedKeys);
               await this.db.updateGroupApiKey(chatId, encryptedKey);
@@ -783,18 +779,8 @@ export class PrivateCommands extends BaseCommand {
                   secretDeletionNotice(keyMessageDeleted),
                 { parse_mode: 'HTML' }
               );
-            } else if (
-              errorMessage.includes('Invalid API key') ||
-              errorMessage.includes('API_KEY_INVALID') ||
-              errorMessage.includes('401')
-            ) {
-              await ctx.reply(
-                '❌ Invalid API keys. Please check your keys and try again.\n\n💡 Get a new key from: https://makersuite.google.com/app/apikey'
-              );
             } else {
-              await ctx.reply(
-                `❌ Failed to validate API keys: ${errorMessage}. Please check and try again.`
-              );
+              await ctx.reply(apiKeyErrorMessage(error));
             }
           }
           return;
