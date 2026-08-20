@@ -35,6 +35,10 @@ ON messages(telegram_chat_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_chat_message
 ON messages(telegram_chat_id, message_id);
 
+-- Supports case-insensitive /tldr @username lookups
+CREATE INDEX IF NOT EXISTS idx_messages_chat_username_lower
+ON messages(telegram_chat_id, LOWER(username));
+
 -- Summaries table: stores auto-generated summaries of messages before deletion
 CREATE TABLE IF NOT EXISTS summaries (
     id SERIAL PRIMARY KEY,

@@ -48,7 +48,9 @@ export class MessageRepository extends BaseRepository {
     const params: any[] = [chatId, since];
 
     if (username) {
-      query += ` AND username = $${params.length + 1}`;
+      // Telegram usernames are case-insensitive, and the stored casing is
+      // whatever the user had when the message was cached.
+      query += ` AND LOWER(username) = LOWER($${params.length + 1})`;
       params.push(username);
     }
 
@@ -80,7 +82,7 @@ export class MessageRepository extends BaseRepository {
     const params: any[] = [chatId];
 
     if (username) {
-      query += ` AND username = $${params.length + 1}`;
+      query += ` AND LOWER(username) = LOWER($${params.length + 1})`;
       params.push(username);
     }
 

@@ -2,8 +2,14 @@ import { NextFunction } from 'grammy';
 import { BaseCommand, MyContext } from './BaseCommand';
 import { getGeminiService } from '../../services/geminiPool';
 import { logger } from '../../utils/logger';
-import { markdownToHtml, splitMessage } from '../../utils/formatter';
+import { markdownToHtml, splitMessage, escapeHtml } from '../../utils/formatter';
 import { config } from '../../config';
+import {
+  parseTLDRArgs,
+  parseTimeframe,
+  isCountBased,
+  parseCount,
+} from '../../utils/tldrArgs';
 
 export class GroupCommands extends BaseCommand {
   private rateLimitMap = new Map<string, number>();
@@ -79,7 +85,7 @@ export class GroupCommands extends BaseCommand {
       // Handle time-based or count-based summary
       const args = ctx.message?.text?.split(' ') || [];
       // Parse arguments to extract timeframe/count and optional style preference
-      const parsedArgs = this.parseTLDRArgs(args.slice(1));
+      const parsedArgs = parseTLDRArgs(args.slice(1));
 
       loadingMsg = await ctx.reply('⏳ Generating summary...');
 
@@ -89,9 +95,9 @@ export class GroupCommands extends BaseCommand {
       let archives: any[] = [];
       let rangeNote = '';
 
-      if (this.isCountBased(parsedArgs.input)) {
+      if (isCountBased(parsedArgs.input)) {
         // Count-based: Get last N messages
-        const count = this.parseCount(parsedArgs.input);
+        const count = parseCount(parsedArgs.input);
         const countLabel = `last ${count} messages`;
         const userLabel = parsedArgs.username ? ` from @${parsedArgs.username}` : '';
         const topicLabel = parsedArgs.topicFocus ? ` on topic "${parsedArgs.topicFocus}"` : '';
@@ -99,7 +105,7 @@ export class GroupCommands extends BaseCommand {
         messages = await this.db.getLastNMessages(chat.id, count, parsedArgs.username);
       } else {
         // Time-based: Get messages since timestamp
-        const since = this.parseTimeframe(parsedArgs.input);
+        const since = parseTimeframe(parsedArgs.input);
         const timeframeLabel = parsedArgs.input;
         const userLabel = parsedArgs.username ? ` from @${parsedArgs.username}` : '';
         const topicLabel = parsedArgs.topicFocus ? ` on topic "${parsedArgs.topicFocus}"` : '';
@@ -140,7 +146,7 @@ export class GroupCommands extends BaseCommand {
         `Generating summary for ${chat.id}: ${summaryLabel} (${messages.length} messages)`
       );
       if (messages.length === 0 && archives.length === 0) {
-        const errorMsg = this.isCountBased(parsedArgs.input)
+        const errorMsg = isCountBased(parsedArgs.input)
           ? '📭 No messages found in the database.'
           : '📭 No messages found in the specified time range.';
         await ctx.api.editMessageText(chat.id, loadingMsg.message_id, errorMsg);
@@ -174,19 +180,21 @@ export class GroupCommands extends BaseCommand {
       // Use user-provided style if available, otherwise fall back to group setting
       const summaryStyle = parsedArgs.style || settings.summary_style;
 
-      // Validate topic one more time before sending to API
-      const validatedTopic = parsedArgs.topicFocus
-        ? this.sanitizeTopic(parsedArgs.topicFocus)
-        : undefined;
-
-      if (parsedArgs.topicFocus && !validatedTopic) {
+      // A topic the user typed but that failed validation must be reported,
+      // not dropped - otherwise they get an unfocused summary with no
+      // explanation of why their filter was ignored.
+      if (parsedArgs.topicRejectedReason) {
         await ctx.api.editMessageText(
           chat.id,
           loadingMsg.message_id,
-          '❌ Invalid topic provided. Topics cannot contain instructions or commands. Please use a simple topic description instead.\n\nExample: <code>/tldr 1000 meeting</code>'
+          `❌ Could not use "${escapeHtml(parsedArgs.rawTopic ?? '')}" as a topic — ` +
+            `${parsedArgs.topicRejectedReason}.\n\n` +
+            'Try a plain description, for example: <code>/tldr 500 meeting notes</code>',
+          { parse_mode: 'HTML' }
         );
         return;
       }
+      const validatedTopic = parsedArgs.topicFocus;
 
       const gemini = getGeminiService(chat.id, group.gemini_api_key_encrypted, this.encryption);
 
@@ -283,7 +291,7 @@ export class GroupCommands extends BaseCommand {
     try {
       // Parse style from command arguments if provided (e.g., /tldr detailed)
       const args = ctx.message?.text?.split(' ') || [];
-      const parsedArgs = this.parseTLDRArgs(args.slice(1));
+      const parsedArgs = parseTLDRArgs(args.slice(1));
 
       const group = await this.db.getGroup(chat.id);
 
@@ -336,19 +344,18 @@ export class GroupCommands extends BaseCommand {
         messageId: msg.message_id,
       }));
 
-      // Validate topic one more time before sending to API
-      const validatedTopic = parsedArgs.topicFocus
-        ? this.sanitizeTopic(parsedArgs.topicFocus)
-        : undefined;
-
-      if (parsedArgs.topicFocus && !validatedTopic) {
+      if (parsedArgs.topicRejectedReason) {
         await ctx.api.editMessageText(
           chat.id,
           loadingMsg.message_id,
-          '❌ Invalid topic provided. Topics cannot contain instructions or commands. Please use a simple topic description instead.\n\nExample: <code>/tldr meeting</code>'
+          `❌ Could not use "${escapeHtml(parsedArgs.rawTopic ?? '')}" as a topic — ` +
+            `${parsedArgs.topicRejectedReason}.\n\n` +
+            'Try a plain description, for example: <code>/tldr meeting notes</code>',
+          { parse_mode: 'HTML' }
         );
         return;
       }
+      const validatedTopic = parsedArgs.topicFocus;
 
       const gemini = getGeminiService(chat.id, group.gemini_api_key_encrypted, this.encryption);
       const summary = await gemini.summarizeMessages(formattedMessages, {
@@ -749,269 +756,6 @@ export class GroupCommands extends BaseCommand {
 
       return true;
     });
-  }
-
-  /**
-   * Sanitizes and validates topic input using a whitelist approach to prevent prompt injection
-   * Uses standard input validation: character whitelist, length limits, and pattern detection
-   */
-  private sanitizeTopic(topic: string): string | null {
-    if (!topic || topic.trim().length === 0) {
-      return null;
-    }
-
-    // Standard length limit to prevent abuse
-    const MAX_TOPIC_LENGTH = 200;
-    const MIN_TOPIC_LENGTH = 1;
-    const trimmedTopic = topic.trim();
-
-    if (trimmedTopic.length < MIN_TOPIC_LENGTH || trimmedTopic.length > MAX_TOPIC_LENGTH) {
-      return null;
-    }
-
-    // Standard character whitelist: allow alphanumeric, spaces, hyphens, apostrophes, and basic punctuation
-    // This prevents injection of code, special characters, and control sequences
-    const ALLOWED_CHARS = /^[a-zA-Z0-9\s\-'.,!?()]+$/;
-
-    if (!ALLOWED_CHARS.test(trimmedTopic)) {
-      logger.warn(`Rejected topic with invalid characters: ${trimmedTopic.substring(0, 100)}`);
-      return null;
-    }
-
-    // Normalize whitespace (standard practice)
-    const normalized = trimmedTopic
-      .replace(/\s+/g, ' ') // Collapse multiple spaces
-      .replace(/^\s+|\s+$/g, '') // Trim
-      .trim();
-
-    // Check for excessive punctuation (might indicate code/injection attempts)
-    const punctuationCount = (normalized.match(/[.,!?()]/g) || []).length;
-    const charCount = normalized.length;
-    const punctuationRatio = punctuationCount / charCount;
-
-    // Reject if more than 30% of characters are punctuation (likely not a natural topic)
-    if (punctuationRatio > 0.3) {
-      logger.warn(`Rejected topic with excessive punctuation: ${normalized.substring(0, 100)}`);
-      return null;
-    }
-
-    // Check for suspicious patterns: multiple consecutive special characters or unusual sequences
-    // This catches things like "..", "---", "()()" which are uncommon in natural topics
-    if (/([.,!?()\-'])\1{2,}/.test(normalized)) {
-      logger.warn(
-        `Rejected topic with suspicious character patterns: ${normalized.substring(0, 100)}`
-      );
-      return null;
-    }
-
-    // Check for instruction injection patterns (case-insensitive)
-    const lowerTopic = normalized.toLowerCase();
-
-    // Common instruction injection keywords and phrases
-    const injectionPatterns = [
-      // Direct instruction commands
-      /\b(ignore|forget|disregard|override|skip|bypass)\s+(current|previous|all|the|these)\s+(instructions?|prompts?|rules?|commands?|directives?)\b/i,
-      /\b(new|different|alternative|replacement)\s+(instructions?|prompts?|system|rules?)\b/i,
-      /\b(you\s+(are|must|should|will|need|have\s+to|cannot|can't|do\s+not|don't))\b/i,
-      /\b(do\s+not|don't|never|always|must\s+not|should\s+not)\s+(follow|obey|use|execute|run|do)\b/i,
-
-      // System prompt injection attempts
-      /\b(system\s+prompt|system\s+instructions?|system\s+message)\b/i,
-      /\b(act\s+as|pretend\s+to\s+be|roleplay\s+as|you're\s+now)\b/i,
-
-      // Command-like patterns
-      /\b(execute|run|perform|carry\s+out|implement)\s+(this|the|these|following)\b/i,
-      /\b(follow|obey|adhere\s+to)\s+(this|the|these|following|new)\s+(instruction|command|directive)\b/i,
-
-      // Ranking/comparison instructions (common injection pattern)
-      /\b(rank|compare|list|sort|order|categorize|classify)\s+(the|all|every)\s+(richest|poorest|best|worst|top|bottom)\b/i,
-      /\b(rank|compare|list|sort|order)\s+(people|users|members|individuals|persons)\b/i,
-
-      // Output manipulation attempts
-      /\b(output|return|respond|reply|say|write|generate)\s+(this|the|following|instead)\b/i,
-      /\b(instead\s+of|rather\s+than|instead|replace)\s+(summarizing|summarize|the\s+summary)\b/i,
-
-      // XML/tag injection attempts
-      /<[^>]+>/i,
-      /<\/?[a-z]+>/i,
-
-      // Code injection patterns
-      /\b(function|def|class|import|require|eval|exec)\s*\(/i,
-      /[{}[\]\\|`~]/,
-    ];
-
-    for (const pattern of injectionPatterns) {
-      if (pattern.test(normalized)) {
-        logger.warn(
-          `Rejected topic with instruction injection pattern: ${normalized.substring(0, 100)}`
-        );
-        return null;
-      }
-    }
-
-    // Check for instruction-like sentence structure (starts with imperative verbs)
-    const imperativeVerbs =
-      /\b(ignore|forget|disregard|override|skip|rank|list|compare|sort|order|execute|run|perform|follow|obey|act|pretend|output|return|respond|say|write|generate)\b/i;
-    if (imperativeVerbs.test(normalized) && normalized.split(/\s+/).length <= 10) {
-      // If topic is short and starts with imperative verb, likely an instruction
-      const words = normalized.toLowerCase().split(/\s+/);
-      const firstWord = words[0];
-      const instructionStarters = [
-        'ignore',
-        'forget',
-        'disregard',
-        'override',
-        'skip',
-        'rank',
-        'list',
-        'compare',
-        'sort',
-        'order',
-        'execute',
-        'run',
-        'perform',
-        'follow',
-        'obey',
-        'act',
-        'pretend',
-        'output',
-        'return',
-        'respond',
-        'say',
-        'write',
-        'generate',
-        'do',
-        "don't",
-        'never',
-        'always',
-      ];
-
-      if (instructionStarters.includes(firstWord) && words.length <= 8) {
-        logger.warn(
-          `Rejected topic starting with imperative verb (likely instruction): ${normalized.substring(0, 100)}`
-        );
-        return null;
-      }
-    }
-
-    // Final validation: ensure we have a valid topic after all checks
-    if (normalized.length === 0 || normalized.length > MAX_TOPIC_LENGTH) {
-      return null;
-    }
-
-    return normalized;
-  }
-
-  private parseTLDRArgs(args: string[]): {
-    input: string;
-    style?: string;
-    topicFocus?: string;
-    username?: string;
-  } {
-    const validStyles = ['default', 'detailed', 'brief', 'bullet', 'timeline'];
-    let input = '1h';
-    let style: string | undefined;
-    let username: string | undefined;
-    const topicParts: string[] = [];
-
-    for (const arg of args) {
-      const lowerArg = arg.toLowerCase();
-
-      // Check if it's a style
-      if (validStyles.includes(lowerArg)) {
-        style = lowerArg;
-        continue;
-      }
-
-      // Check if it's a mention
-      if (arg.startsWith('@')) {
-        username = arg.slice(1);
-        continue;
-      }
-
-      // Check if it's timeframe/count (only if we haven't set one yet)
-      const isTimeframe =
-        /^\d+(h|d|h)$/.test(lowerArg) ||
-        ['day', 'week'].includes(lowerArg) ||
-        /^\d+$/.test(lowerArg);
-
-      if (isTimeframe && input === '1h') {
-        input = lowerArg;
-        continue;
-      }
-
-      // Otherwise, it's part of the topic focus
-      topicParts.push(arg);
-    }
-
-    // Sanitize the topic before returning
-    const rawTopic = topicParts.length > 0 ? topicParts.join(' ') : undefined;
-    const sanitizedTopic = rawTopic ? this.sanitizeTopic(rawTopic) : undefined;
-
-    return {
-      input,
-      style,
-      username,
-      topicFocus: sanitizedTopic || undefined,
-    };
-  }
-
-  private isCountBased(input: string): boolean {
-    const normalized = input.toLowerCase().trim();
-    return /^\d+$/.test(normalized);
-  }
-
-  private parseCount(input: string): number {
-    const value = parseInt(input.trim(), 10);
-    if (isNaN(value) || value <= 0) {
-      return 100;
-    }
-    return Math.min(value, 10000);
-  }
-
-  private parseTimeframe(timeframe: string): Date {
-    const now = Date.now();
-    const MAX_HOURS = 168; // 7 days maximum
-    let hours = 1;
-
-    const normalized = timeframe.toLowerCase().trim().replace(/\s+/g, ' ');
-
-    const dayMatch = normalized.match(/^(\d+)\s+(day|days)$/);
-    if (dayMatch) {
-      const days = Math.min(parseInt(dayMatch[1], 10), 7);
-      hours = days * 24;
-      return new Date(now - hours * 60 * 60 * 1000);
-    }
-
-    const hourMatch = normalized.match(/^(\d+)\s+(hour|hours|h)$/);
-    if (hourMatch) {
-      const value = parseInt(hourMatch[1], 10);
-      hours = Math.min(value, MAX_HOURS);
-      return new Date(now - hours * 60 * 60 * 1000);
-    }
-
-    const weekMatch = normalized.match(/^(\d+)\s+(week|weeks)$/);
-    if (weekMatch) {
-      const weeks = Math.min(parseInt(weekMatch[1], 10), 1);
-      hours = weeks * 168;
-      return new Date(now - hours * 60 * 60 * 1000);
-    }
-
-    // Handle compact formats and defaults (h, d, pure number fallback)
-    if (normalized.endsWith('h')) {
-      const value = parseInt(normalized.slice(0, -1), 10);
-      hours = !isNaN(value) && value > 0 ? Math.min(value, MAX_HOURS) : 1;
-    } else if (normalized.endsWith('d') || normalized === 'day') {
-      const value = normalized === 'day' ? 1 : parseInt(normalized.slice(0, -1), 10);
-      hours = !isNaN(value) && value > 0 ? Math.min(value, 7) * 24 : 24;
-    } else if (normalized === 'week') {
-      hours = 168;
-    } else {
-      const value = parseInt(normalized, 10);
-      hours = !isNaN(value) && value > 0 ? Math.min(value, MAX_HOURS) : 1;
-    }
-
-    return new Date(now - hours * 60 * 60 * 1000);
   }
 
   /**

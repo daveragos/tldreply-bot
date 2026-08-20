@@ -1,4 +1,18 @@
 /**
+ * Escapes text for safe interpolation into a Telegram HTML message.
+ *
+ * Needed anywhere user input is echoed back - a topic containing "<" would
+ * otherwise make Telegram reject the whole message as malformed HTML.
+ */
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
  * Convert markdown to HTML for Telegram
  * According to Telegram Bot API: https://core.telegram.org/bots/api#html-style
  * Supports: <b>bold</b>, <i>italic</i>, <u>underline</u>, <s>strikethrough</s>, <code>code</code>, <pre>pre</pre>
