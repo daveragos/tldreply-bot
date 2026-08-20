@@ -139,8 +139,11 @@ export function renderWrap(v: WrapView): Buffer {
   y += 96;
 
   // ---- top talkers ----
+  // Card height follows the number of rows; a small group must not leave a
+  // blank band where a fifth name would have been.
+  const rows = Math.max(1, v.top.length);
   ctx.fillStyle = C.bgAlt;
-  roundRect(ctx, M - 24, y - 12, W - (M - 24) * 2, 384, 28);
+  roundRect(ctx, M - 24, y - 12, W - (M - 24) * 2, rows * 62 + 74, 28);
   ctx.fill();
   y += 40;
   label(ctx, 'Loudest voices', M, y, C.accent);
@@ -171,7 +174,7 @@ export function renderWrap(v: WrapView): Buffer {
     ctx.fillText(fmt(t.messages), W - M, rowY);
     ctx.textAlign = 'left';
   });
-  y += 5 * 62 + 12;
+  y += rows * 62 + 12;
 
   // ---- when the group is awake ----
   label(ctx, 'When this group is awake', M, y, C.accent);
